@@ -4,7 +4,7 @@
 Supports both low-VRAM and datacenter GPUs (e.g., A100) with runtime presets.
 - Streams input rows (does not load entire CSV into RAM)
 - Processes rows in batches with one model load
-- Uses system prompts from prompt_examples_og.md
+- Uses system prompts from prompt_examples.md
 - Appends results to an output CSV so runs can be resumed
 """
 
@@ -44,7 +44,7 @@ RUNTIME_PRESETS: dict[str, dict[str, Any]] = {
         "gpu_mem_util": 0.94,
         "max_model_len": 1024,
         "max_num_seqs": 64,
-        "batch_size": 128,
+        "batch_size": 64,
         "max_tokens": 96,
         "context_reserve_tokens": 128,
         "log_every": 5000,
@@ -272,7 +272,7 @@ def main() -> int:
     ap.add_argument("--input-csv", default="v2_3m_final_clean_text.csv", help="Input CSV path")
     ap.add_argument("--text-column", default="text", help="CSV column containing the sentence text")
     ap.add_argument("--output-csv", required=True, help="Output CSV path")
-    ap.add_argument("--prompt-md", default="prompt_examples_og.md", help="Markdown file with prompts")
+    ap.add_argument("--prompt-md", default="prompt_examples.md", help="Markdown file with prompts")
     ap.add_argument("--prompt-type", choices=["MFT", "SHVT"], required=True, help="Prompt type to apply")
     ap.add_argument(
         "--runtime-profile",
@@ -426,7 +426,6 @@ def main() -> int:
         "parse_ok",
         "scores_json",
         "error",
-        "response_raw",
     ]
     if args.include_text:
         out_fields.append("text")
@@ -482,7 +481,6 @@ def main() -> int:
             "parse_ok": "1" if parse_ok else "0",
             "scores_json": json.dumps(scores_obj, ensure_ascii=False, separators=(",", ":")) if scores_obj else "",
             "error": error,
-            "response_raw": raw_text,
         }
         if args.include_text:
             row_out["text"] = source_sentence

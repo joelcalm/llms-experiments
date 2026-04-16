@@ -2,3 +2,6 @@
 v2_3m_final_clean_text.csv
 
 outputs/
+logs/
+myenv/
+__pycache__/
