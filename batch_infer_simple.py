@@ -105,7 +105,7 @@ def extract_prompt_from_markdown(md_text: str, prompt_type: str) -> str:
     return match.group(1).strip()
 
 
-def parse_model_json(raw_text: str) -> tuple[bool, dict[str, int] | None, str]:
+def parse_model_json(raw_text: str, score_max: int) -> tuple[bool, dict[str, int] | None, str]:
     text = (raw_text or "").strip()
     if not text:
         return False, None, "empty_response"
@@ -134,7 +134,7 @@ def parse_model_json(raw_text: str) -> tuple[bool, dict[str, int] | None, str]:
             return False, None, f"invalid_score_type:{key}"
         if isinstance(value, (int, float)) and int(value) == float(value):
             iv = int(value)
-            if iv < 0 or iv > 100:
+            if iv < 0 or iv > score_max:
                 return False, None, f"score_out_of_range:{key}"
             normalized[key] = iv
         else:
@@ -143,14 +143,14 @@ def parse_model_json(raw_text: str) -> tuple[bool, dict[str, int] | None, str]:
     return True, normalized, ""
 
 
-def build_json_schema(labels: list[str]) -> dict[str, Any]:
+def build_json_schema(labels: list[str], score_max: int) -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
             "scores": {
                 "type": "object",
                 "properties": {
-                    label: {"type": "integer", "minimum": 0, "maximum": 100}
+                    label: {"type": "integer", "minimum": 0, "maximum": score_max}
                     for label in labels
                 },
                 "required": labels,
@@ -311,6 +311,12 @@ def main() -> int:
     )
     ap.add_argument("--limit", type=int, default=0, help="Process at most N non-empty rows after resume skip (0 = all)")
     ap.add_argument(
+        "--score-max",
+        type=int,
+        default=100,
+        help="Maximum allowed integer score per label (default: 100)",
+    )
+    ap.add_argument(
         "--truncate-to-fit",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -329,6 +335,10 @@ def main() -> int:
 
     args = ap.parse_args()
     apply_runtime_preset(args)
+
+    if args.score_max <= 0:
+        print("ERROR: --score-max must be > 0", file=sys.stderr)
+        return 1
 
     input_csv = Path(args.input_csv)
     prompt_md = Path(args.prompt_md)
@@ -404,7 +414,7 @@ def main() -> int:
         StructuredOutputsParams = load_structured_outputs_params_class()
         if StructuredOutputsParams is not None:
             sampling_kwargs["structured_outputs"] = StructuredOutputsParams(
-                json=build_json_schema(labels),
+                json=build_json_schema(labels, int(args.score_max)),
                 disable_any_whitespace=True,
                 disable_additional_properties=True,
             )
@@ -459,7 +469,7 @@ def main() -> int:
         scores_obj: dict[str, int] | None = None
         error = forced_error
         if not forced_error:
-            parse_ok, scores_obj, error = parse_model_json(raw_text)
+            parse_ok, scores_obj, error = parse_model_json(raw_text, int(args.score_max))
             if scores_obj is not None:
                 actual = set(scores_obj.keys())
                 if actual != expected_labels:
