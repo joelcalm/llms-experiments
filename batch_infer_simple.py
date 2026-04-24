@@ -4,7 +4,7 @@
 Supports both low-VRAM and datacenter GPUs (e.g., A100) with runtime presets.
 - Streams input rows (does not load entire CSV into RAM)
 - Processes rows in batches with one model load
-- Uses system prompts from prompt_examples.md
+- Uses modular system prompts built from components in prompt_builder.py
 - Appends results to an output CSV so runs can be resumed
 """
 
@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from vllm import LLM, SamplingParams
+from prompt_builder import build_prompt, load_prompt_components, get_labels
 
 MODEL_PRESETS = {
     "qwen-0.8b": "Qwen/Qwen3.5-0.8B",
@@ -52,57 +53,6 @@ RUNTIME_PRESETS: dict[str, dict[str, Any]] = {
         "dtype": "bfloat16",
     },
 }
-
-MFT_LABELS = [
-    "care",
-    "harm",
-    "fairness",
-    "cheating",
-    "loyalty",
-    "betrayal",
-    "authority",
-    "subversion",
-    "sanctity",
-    "degradation",
-]
-
-SHVT_LABELS = [
-    "self_direction_thought",
-    "self_direction_action",
-    "stimulation",
-    "hedonism",
-    "achievement",
-    "power_dominance",
-    "power_resources",
-    "face",
-    "security_personal",
-    "security_societal",
-    "tradition",
-    "conformity_rules",
-    "conformity_interpersonal",
-    "humility",
-    "benevolence_caring",
-    "benevolence_dependability",
-    "universalism_concern",
-    "universalism_nature",
-    "universalism_tolerance",
-    "universalism_objectivity",
-]
-
-
-def extract_prompt_from_markdown(md_text: str, prompt_type: str) -> str:
-    prompt_type = prompt_type.upper()
-    if prompt_type == "MFT":
-        pattern = r"## MFT.*?```text\n(.*?)```"
-    elif prompt_type == "SHVT":
-        pattern = r"## SHVT.*?```text\n(.*?)```"
-    else:
-        raise ValueError("prompt_type must be MFT or SHVT")
-
-    match = re.search(pattern, md_text, flags=re.DOTALL)
-    if not match:
-        raise ValueError(f"Could not find {prompt_type} prompt in markdown file")
-    return match.group(1).strip()
 
 
 def parse_model_json(raw_text: str, score_max: int) -> tuple[bool, dict[str, int] | None, str]:
@@ -347,16 +297,18 @@ def main() -> int:
     if not input_csv.exists():
         print(f"ERROR: input CSV not found: {input_csv}", file=sys.stderr)
         return 1
+
+    # Load prompt components from the markdown file
     if not prompt_md.exists():
         print(f"ERROR: prompt markdown not found: {prompt_md}", file=sys.stderr)
         return 1
+    load_prompt_components(str(prompt_md))
 
     model_id = args.model_id.strip() or MODEL_PRESETS[args.model]
-    labels = MFT_LABELS if args.prompt_type == "MFT" else SHVT_LABELS
+    labels = get_labels(args.prompt_type)
 
-    with prompt_md.open("r", encoding="utf-8") as f:
-        md_text = f.read()
-    system_prompt = extract_prompt_from_markdown(md_text, args.prompt_type)
+    # Use modular prompt builder
+    system_prompt = build_prompt(args.prompt_type)
 
     print(f"Loading model: {model_id}")
     print(
