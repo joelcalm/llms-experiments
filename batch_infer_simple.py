@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Simple local GPU batch inference over a CSV using vLLM.
+"""GPU batch inference over a CSV using vLLM.
 
-Supports both low-VRAM and datacenter GPUs (e.g., A100) with runtime presets.
 - Streams input rows (does not load entire CSV into RAM)
 - Processes rows in batches with one model load
 - Uses modular system prompts built from components in prompt_builder.py

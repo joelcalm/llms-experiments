@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=vllm-scores
-#SBATCH --time=20:00:00
+#SBATCH --time=12:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=96G
@@ -31,18 +31,18 @@ if [[ ! -f "$RUN_DIR/batch_infer_simple.py" ]]; then
     exit 2
 fi
 
-if [[ ! -f "$RUN_DIR/prompt_examples.md" ]]; then
-    echo "ERROR: Missing $RUN_DIR/prompt_examples.md" >&2
+if [[ ! -f "$RUN_DIR/prompts/prompt_examples_0_100.md" ]]; then
+    echo "ERROR: Missing $RUN_DIR/prompts/prompt_examples_0_100.md" >&2
     exit 2
 fi
 
-if [[ ! -f "$RUN_DIR/prompt_examples_0_20.md" ]]; then
-    echo "ERROR: Missing $RUN_DIR/prompt_examples_0_20.md" >&2
+if [[ ! -f "$RUN_DIR/prompts/prompt_examples_0_20.md" ]]; then
+    echo "ERROR: Missing $RUN_DIR/prompts/prompt_examples_0_20.md" >&2
     exit 2
 fi
 
-if [[ ! -f "$RUN_DIR/prompt_examples_0_5.md" ]]; then
-    echo "ERROR: Missing $RUN_DIR/prompt_examples_0_5.md" >&2
+if [[ ! -f "$RUN_DIR/prompts/prompt_examples_0_5.md" ]]; then
+    echo "ERROR: Missing $RUN_DIR/prompts/prompt_examples_0_5.md" >&2
     exit 2
 fi
 
@@ -72,16 +72,16 @@ esac
 
 case "$SCORE_MAX" in
     100)
-        PROMPT_MD_DEFAULT="$RUN_DIR/prompt_examples.md"
+        PROMPT_MD_DEFAULT="$RUN_DIR/prompts/prompt_examples_0_100.md"
         ;;
     20)
-        PROMPT_MD_DEFAULT="$RUN_DIR/prompt_examples_0_20.md"
+        PROMPT_MD_DEFAULT="$RUN_DIR/prompts/prompt_examples_0_20.md"
         ;;
     10)
-        PROMPT_MD_DEFAULT="$RUN_DIR/prompt_examples_0_10.md"
+        PROMPT_MD_DEFAULT="$RUN_DIR/prompts/prompt_examples_0_10.md"
         ;;
     5)
-        PROMPT_MD_DEFAULT="$RUN_DIR/prompt_examples_0_5.md"
+        PROMPT_MD_DEFAULT="$RUN_DIR/prompts/prompt_examples_0_5.md"
         ;;
     *)
         echo "ERROR: SCORE_MAX must be one of: 100, 20, 10, 5 (got '$SCORE_MAX')" >&2
