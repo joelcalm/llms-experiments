@@ -224,6 +224,8 @@ def main() -> int:
     ap.add_argument("--output-csv", required=True, help="Output CSV path")
     ap.add_argument("--prompt-md", default="prompt_examples.md", help="Markdown file with prompts")
     ap.add_argument("--prompt-type", choices=["MFT", "SHVT"], required=True, help="Prompt type to apply")
+    ap.add_argument("--definitions", action="store_true", help="" \
+    "Include label definitions in the prompt (if false, only label names are included)")
     ap.add_argument(
         "--runtime-profile",
         choices=sorted(RUNTIME_PRESETS),
@@ -308,7 +310,7 @@ def main() -> int:
     labels = get_labels(args.prompt_type)
 
     # Use modular prompt builder
-    system_prompt = build_prompt(args.prompt_type)
+    system_prompt = build_prompt(args.prompt_type,include_labels_definitions=args.definitions)
 
     print(f"Loading model: {model_id}")
     print(

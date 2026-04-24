@@ -217,4 +217,5 @@ srun "$ENV_PYTHON" "$INFER_SCRIPT" \
     --truncate-to-fit \
     --flush-every "$FLUSH_EVERY" \
     --log-every "$LOG_EVERY" \
+    --definitions \
     "${EXTRA_ARGS[@]}"
