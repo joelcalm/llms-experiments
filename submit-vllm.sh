@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=vllm-scores
-#SBATCH --time=12:00:00
+#SBATCH --time=20:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=96G
@@ -217,5 +217,4 @@ srun "$ENV_PYTHON" "$INFER_SCRIPT" \
     --truncate-to-fit \
     --flush-every "$FLUSH_EVERY" \
     --log-every "$LOG_EVERY" \
-    --definitions \
     "${EXTRA_ARGS[@]}"
