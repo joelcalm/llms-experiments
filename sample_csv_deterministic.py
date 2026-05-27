@@ -22,16 +22,32 @@ def detect_csv_dialect(csv_path: Path) -> csv.Dialect:
         return csv.excel
 
 
-def count_eligible_rows(input_csv: Path, text_column: str, dialect: csv.Dialect) -> tuple[int, list[str]]:
+def row_matches_filter(row: dict[str, str], filter_column: str, filter_value: str) -> bool:
+    if not filter_column:
+        return True
+    return (row.get(filter_column) or "").strip().lower() == filter_value.strip().lower()
+
+
+def count_eligible_rows(
+    input_csv: Path,
+    text_column: str,
+    dialect: csv.Dialect,
+    filter_column: str = "",
+    filter_value: str = "",
+) -> tuple[int, list[str]]:
     with input_csv.open("r", encoding="utf-8", newline="") as in_f:
         reader = csv.DictReader(in_f, dialect=dialect)
         if not reader.fieldnames:
             raise ValueError("Input CSV has no header")
         if text_column not in reader.fieldnames:
             raise ValueError(f"Missing text column '{text_column}' in input CSV")
+        if filter_column and filter_column not in reader.fieldnames:
+            raise ValueError(f"Missing filter column '{filter_column}' in input CSV")
 
         count = 0
         for row in reader:
+            if not row_matches_filter(row, filter_column, filter_value):
+                continue
             if (row.get(text_column) or "").strip():
                 count += 1
         return count, list(reader.fieldnames)
@@ -44,6 +60,8 @@ def write_sample(
     selected_positions: list[int],
     dialect: csv.Dialect,
     fieldnames: list[str],
+    filter_column: str = "",
+    filter_value: str = "",
 ) -> int:
     selected_iter = iter(selected_positions)
     next_selected = next(selected_iter, None)
@@ -55,10 +73,13 @@ def write_sample(
         "w", encoding="utf-8", newline=""
     ) as out_f:
         reader = csv.DictReader(in_f, dialect=dialect)
-        writer = csv.DictWriter(out_f, fieldnames=fieldnames)
+        writer = csv.DictWriter(out_f, fieldnames=fieldnames, dialect=dialect)
         writer.writeheader()
 
         for row in reader:
+            if not row_matches_filter(row, filter_column, filter_value):
+                continue
+
             text = (row.get(text_column) or "").strip()
             if not text:
                 continue
@@ -83,6 +104,8 @@ def main() -> int:
     ap.add_argument("--text-column", default="text", help="CSV text column used to filter empty rows")
     ap.add_argument("--sample-size", type=int, required=True, help="Target sample size")
     ap.add_argument("--seed", type=int, default=20260417, help="Deterministic sampling seed")
+    ap.add_argument("--filter-column", default="", help="Optional column used to filter eligible rows before sampling")
+    ap.add_argument("--filter-value", default="", help="Required value for --filter-column")
     ap.add_argument(
         "--overwrite",
         action="store_true",
@@ -105,8 +128,18 @@ def main() -> int:
         print(f"Output already exists, not overwriting: {output_csv}")
         return 0
 
+    if bool(args.filter_column) != bool(args.filter_value):
+        print("ERROR: --filter-column and --filter-value must be provided together", file=sys.stderr)
+        return 1
+
     dialect = detect_csv_dialect(input_csv)
-    total_eligible, fieldnames = count_eligible_rows(input_csv, args.text_column, dialect)
+    total_eligible, fieldnames = count_eligible_rows(
+        input_csv,
+        args.text_column,
+        dialect,
+        args.filter_column,
+        args.filter_value,
+    )
 
     if total_eligible == 0:
         print("ERROR: no non-empty rows found in input", file=sys.stderr)
@@ -123,11 +156,15 @@ def main() -> int:
         selected_positions=selected_positions,
         dialect=dialect,
         fieldnames=fieldnames,
+        filter_column=args.filter_column,
+        filter_value=args.filter_value,
     )
 
     print(f"Input eligible rows: {total_eligible}")
     print(f"Seed: {args.seed}")
     print(f"Requested sample size: {args.sample_size}")
+    if args.filter_column:
+        print(f"Filter: {args.filter_column}={args.filter_value}")
     print(f"Written rows: {written}")
     print(f"Output: {output_csv}")
     return 0

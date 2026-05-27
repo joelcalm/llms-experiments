@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Simple local GPU batch inference over a CSV using vLLM.
+"""Simple local GPU one-label classification over a CSV using vLLM.
 
 Supports both low-VRAM and datacenter GPUs (e.g., A100) with runtime presets.
 - Streams input rows (does not load entire CSV into RAM)
 - Processes rows in batches with one model load
-- Uses system prompts from prompt_examples.md
+- Uses a system prompt from a markdown or plain text file
 - Appends results to an output CSV so runs can be resumed
 """
 
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import importlib
 import json
 import re
@@ -26,6 +25,9 @@ from vllm import LLM, SamplingParams
 MODEL_PRESETS = {
     "qwen-0.8b": "Qwen/Qwen3.5-0.8B",
     "qwen-2b-awq": "cyankiwi/Qwen3.5-2B-AWQ-4bit",
+    "qwen-27b": "Qwen/Qwen3.5-27B",
+    "gemma-31b": "google/gemma-4-31B-it",
+    "ministral-14b": "mistralai/Ministral-3-14B-Instruct-2512",
 }
 
 RUNTIME_PRESETS: dict[str, dict[str, Any]] = {
@@ -66,6 +68,10 @@ MFT_LABELS = [
     "degradation",
 ]
 
+LABEL_ALIASES = {
+    "purity": "sanctity",
+}
+
 SHVT_LABELS = [
     "self_direction_thought",
     "self_direction_action",
@@ -101,65 +107,159 @@ def extract_prompt_from_markdown(md_text: str, prompt_type: str) -> str:
 
     match = re.search(pattern, md_text, flags=re.DOTALL)
     if not match:
+        if "```" not in md_text:
+            return md_text.strip()
         raise ValueError(f"Could not find {prompt_type} prompt in markdown file")
     return match.group(1).strip()
 
 
-def parse_model_json(raw_text: str, score_max: int) -> tuple[bool, dict[str, int] | None, str]:
+def parse_one_label_json(raw_text: str, valid_labels: set[str]) -> tuple[bool, str, str]:
     text = (raw_text or "").strip()
     if not text:
-        return False, None, "empty_response"
+        return False, "parse_error", "empty_response"
 
     try:
         obj = json.loads(text)
     except json.JSONDecodeError:
         m = re.search(r"\{.*\}", text, flags=re.DOTALL)
         if not m:
-            return False, None, "no_json_object"
+            return False, "parse_error", "no_json_object"
         try:
             obj = json.loads(m.group(0))
         except json.JSONDecodeError:
-            return False, None, "json_parse_error"
+            return False, "parse_error", "json_parse_error"
 
     if not isinstance(obj, dict):
-        return False, None, "json_not_object"
+        return False, "parse_error", "json_not_object"
+    if set(obj.keys()) != {"value_id"}:
+        return False, "parse_error", "schema_mismatch"
 
-    scores = obj.get("scores")
-    if not isinstance(scores, dict):
-        return False, None, "missing_scores"
+    value_id = obj.get("value_id")
+    if not isinstance(value_id, str):
+        return False, "parse_error", "invalid_value_id_type"
 
-    normalized: dict[str, int] = {}
-    for key, value in scores.items():
-        if isinstance(value, bool):
-            return False, None, f"invalid_score_type:{key}"
-        if isinstance(value, (int, float)) and int(value) == float(value):
-            iv = int(value)
-            if iv < 0 or iv > score_max:
-                return False, None, f"score_out_of_range:{key}"
-            normalized[key] = iv
-        else:
-            return False, None, f"invalid_score_type:{key}"
+    normalized = canonicalize_label(value_id)
+    if normalized not in valid_labels:
+        return False, "invalid_label", f"invalid_label:{normalized}"
 
     return True, normalized, ""
 
 
-def build_json_schema(labels: list[str], score_max: int) -> dict[str, Any]:
+def build_one_label_json_schema(labels: list[str]) -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "scores": {
-                "type": "object",
-                "properties": {
-                    label: {"type": "integer", "minimum": 0, "maximum": score_max}
-                    for label in labels
-                },
-                "required": labels,
-                "additionalProperties": False,
+            "value_id": {
+                "type": "string",
+                "enum": labels + ["none"],
             }
         },
-        "required": ["scores"],
+        "required": ["value_id"],
         "additionalProperties": False,
     }
+
+
+def canonicalize_label(label: str) -> str:
+    normalized = label.strip()
+    return LABEL_ALIASES.get(normalized, normalized)
+
+
+def safe_divide(numerator: float, denominator: float) -> float:
+    return numerator / denominator if denominator else 0.0
+
+
+def write_one_label_metrics(output_csv: Path, labels: list[str], run_name: str) -> None:
+    y_true: list[str] = []
+    y_pred: list[str] = []
+
+    with output_csv.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            true_label = canonicalize_label(row.get("value_id") or "")
+            pred_label = canonicalize_label(row.get("predicted_value_id") or "")
+            if true_label and pred_label:
+                y_true.append(true_label)
+                y_pred.append(pred_label)
+
+    metrics_dir = output_csv.parent
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    base = metrics_dir / run_name
+
+    ordered_labels: list[str] = []
+    appearing = set(y_true) | set(y_pred)
+    for label in labels:
+        ordered_labels.append(label)
+    for label in ["none", "parse_error", "invalid_label"]:
+        if label in appearing:
+            ordered_labels.append(label)
+    ordered_labels.extend(sorted(appearing - set(ordered_labels)))
+
+    counts: dict[tuple[str, str], int] = {}
+    for true_label, pred_label in zip(y_true, y_pred):
+        counts[(true_label, pred_label)] = counts.get((true_label, pred_label), 0) + 1
+
+    report_rows: list[dict[str, Any]] = []
+    total = len(y_true)
+    correct = sum(1 for true_label, pred_label in zip(y_true, y_pred) if true_label == pred_label)
+
+    for label in ordered_labels:
+        tp = counts.get((label, label), 0)
+        fp = sum(counts.get((true_label, label), 0) for true_label in ordered_labels if true_label != label)
+        fn = sum(counts.get((label, pred_label), 0) for pred_label in ordered_labels if pred_label != label)
+        support = sum(counts.get((label, pred_label), 0) for pred_label in ordered_labels)
+        precision = safe_divide(tp, tp + fp)
+        recall = safe_divide(tp, tp + fn)
+        f1 = safe_divide(2 * precision * recall, precision + recall)
+        report_rows.append(
+            {
+                "class": label,
+                "precision": f"{precision:.10f}",
+                "recall": f"{recall:.10f}",
+                "f1": f"{f1:.10f}",
+                "support": support,
+            }
+        )
+
+    macro_precision = safe_divide(sum(float(row["precision"]) for row in report_rows), len(report_rows))
+    macro_recall = safe_divide(sum(float(row["recall"]) for row in report_rows), len(report_rows))
+    macro_f1 = safe_divide(sum(float(row["f1"]) for row in report_rows), len(report_rows))
+    weighted_precision = safe_divide(
+        sum(float(row["precision"]) * int(row["support"]) for row in report_rows), total
+    )
+    weighted_recall = safe_divide(sum(float(row["recall"]) * int(row["support"]) for row in report_rows), total)
+    weighted_f1 = safe_divide(sum(float(row["f1"]) * int(row["support"]) for row in report_rows), total)
+
+    with (base.with_name(f"{run_name}_metrics.csv")).open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["metric", "value"])
+        writer.writeheader()
+        for metric, value in [
+            ("accuracy", safe_divide(correct, total)),
+            ("macro_precision", macro_precision),
+            ("macro_recall", macro_recall),
+            ("macro_f1", macro_f1),
+            ("weighted_precision", weighted_precision),
+            ("weighted_recall", weighted_recall),
+            ("weighted_f1", weighted_f1),
+        ]:
+            writer.writerow({"metric": metric, "value": f"{value:.10f}"})
+
+    with (base.with_name(f"{run_name}_classification_report.csv")).open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["class", "precision", "recall", "f1", "support"])
+        writer.writeheader()
+        writer.writerows(report_rows)
+
+    with (base.with_name(f"{run_name}_confusion_matrix.csv")).open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["true_label", *ordered_labels])
+        for true_label in ordered_labels:
+            writer.writerow([true_label, *[counts.get((true_label, pred_label), 0) for pred_label in ordered_labels]])
+
+    with (base.with_name(f"{run_name}_summary.md")).open("w", encoding="utf-8") as f:
+        f.write(f"# {run_name}\n\n")
+        f.write(f"- Rows: {total}\n")
+        f.write(f"- Accuracy: {safe_divide(correct, total):.6f}\n")
+        f.write(f"- Macro F1: {macro_f1:.6f}\n")
+        f.write(f"- Weighted F1: {weighted_f1:.6f}\n")
 
 
 def load_structured_outputs_params_class() -> Any | None:
@@ -186,10 +286,6 @@ def count_completed_rows(out_csv: Path) -> int:
         reader = csv.reader(f)
         next(reader, None)
         return sum(1 for _ in reader)
-
-
-def text_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def is_context_overflow_error(exc: Exception) -> bool:
@@ -267,13 +363,21 @@ def apply_runtime_preset(args: argparse.Namespace) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Simple local GPU CSV batch inference with vLLM")
+    ap = argparse.ArgumentParser(description="Local GPU one-label CSV classification with vLLM")
 
-    ap.add_argument("--input-csv", default="v2_3m_final_clean_text.csv", help="Input CSV path")
-    ap.add_argument("--text-column", default="text", help="CSV column containing the sentence text")
+    ap.add_argument("--input-csv", default="protoethosv2_3m_finalqc_20260512.csv", help="Input CSV path")
+    ap.add_argument("--text-column", default="sentence", help="CSV column containing the sentence text")
     ap.add_argument("--output-csv", required=True, help="Output CSV path")
-    ap.add_argument("--prompt-md", default="prompt_examples.md", help="Markdown file with prompts")
+    ap.add_argument("--prompt-md", required=True, help="Markdown or plain text prompt file")
     ap.add_argument("--prompt-type", choices=["MFT", "SHVT"], required=True, help="Prompt type to apply")
+    ap.add_argument("--id-column", default="id", help="CSV id column")
+    ap.add_argument("--label-column", default="value_id", help="Ground-truth label column")
+    ap.add_argument("--sample-index-column", default="sample_index", help="CSV sample index column")
+    ap.add_argument(
+        "--metrics-run-name",
+        default="",
+        help="Run name prefix for metrics files (default: output CSV stem)",
+    )
     ap.add_argument(
         "--runtime-profile",
         choices=sorted(RUNTIME_PRESETS),
@@ -300,6 +404,18 @@ def main() -> int:
         default=True,
         help="Enable vLLM prefix caching for repeated system prompts",
     )
+    ap.add_argument(
+        "--language-model-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Disable multimodal inputs for VL models",
+    )
+    ap.add_argument(
+        "--skip-mm-profiling",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Skip multimodal profiling during engine init",
+    )
 
     ap.add_argument("--batch-size", type=int, default=None, help="Rows per llm.chat() call")
     ap.add_argument("--temperature", type=float, default=0.0)
@@ -310,12 +426,6 @@ def main() -> int:
         help="Disable guided JSON output constraints",
     )
     ap.add_argument("--limit", type=int, default=0, help="Process at most N non-empty rows after resume skip (0 = all)")
-    ap.add_argument(
-        "--score-max",
-        type=int,
-        default=100,
-        help="Maximum allowed integer score per label (default: 100)",
-    )
     ap.add_argument(
         "--truncate-to-fit",
         action=argparse.BooleanOptionalAction,
@@ -329,16 +439,11 @@ def main() -> int:
         help="Token budget reserved for generation when truncating",
     )
     ap.add_argument("--resume", action="store_true", help="Resume by skipping rows already present in output")
-    ap.add_argument("--include-text", action="store_true", help="Include original text in output CSV")
     ap.add_argument("--log-every", type=int, default=None, help="Progress print frequency in rows")
     ap.add_argument("--flush-every", type=int, default=None, help="Flush output every N completed batches")
 
     args = ap.parse_args()
     apply_runtime_preset(args)
-
-    if args.score_max <= 0:
-        print("ERROR: --score-max must be > 0", file=sys.stderr)
-        return 1
 
     input_csv = Path(args.input_csv)
     prompt_md = Path(args.prompt_md)
@@ -353,6 +458,7 @@ def main() -> int:
 
     model_id = args.model_id.strip() or MODEL_PRESETS[args.model]
     labels = MFT_LABELS if args.prompt_type == "MFT" else SHVT_LABELS
+    one_label_valid_labels = set(labels) | {"none"}
 
     with prompt_md.open("r", encoding="utf-8") as f:
         md_text = f.read()
@@ -378,6 +484,8 @@ def main() -> int:
         dtype=str(args.dtype),
         enable_prefix_caching=bool(args.enable_prefix_caching),
         enforce_eager=bool(args.enforce_eager),
+        language_model_only=bool(args.language_model_only),
+        skip_mm_profiling=bool(args.skip_mm_profiling),
         trust_remote_code=True,
     )
     tokenizer = llm.get_tokenizer()
@@ -414,7 +522,7 @@ def main() -> int:
         StructuredOutputsParams = load_structured_outputs_params_class()
         if StructuredOutputsParams is not None:
             sampling_kwargs["structured_outputs"] = StructuredOutputsParams(
-                json=build_json_schema(labels, int(args.score_max)),
+                json=build_one_label_json_schema(labels),
                 disable_any_whitespace=True,
                 disable_additional_properties=True,
             )
@@ -429,16 +537,14 @@ def main() -> int:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     out_exists = output_csv.exists() and output_csv.stat().st_size > 0
     out_fields = [
-        "row_number",
-        "text_hash",
-        "prompt_type",
-        "truncated_input",
+        "sample_index",
+        "id",
+        "sentence",
+        "value_id",
+        "predicted_value_id",
         "parse_ok",
-        "scores_json",
-        "error",
+        "correct",
     ]
-    if args.include_text:
-        out_fields.append("text")
 
     completed_rows = count_completed_rows(output_csv) if args.resume else 0
     if args.resume and completed_rows > 0:
@@ -451,55 +557,47 @@ def main() -> int:
     total_truncated = 0
     total_context_errors = 0
     accepted_rows = 0
-    batch_rows: list[tuple[int, str]] = []
-    expected_labels = set(labels)
+    batch_rows: list[tuple[int, str, dict[str, str]]] = []
     flush_every = max(1, int(args.flush_every))
 
     def write_result_row(
         writer: csv.DictWriter,
         source_row_number: int,
         source_sentence: str,
+        source_row: dict[str, str],
         raw_text: str,
         *,
         truncated_input: bool,
         forced_error: str = "",
     ) -> None:
         nonlocal total_written
-        parse_ok = False
-        scores_obj: dict[str, int] | None = None
-        error = forced_error
-        if not forced_error:
-            parse_ok, scores_obj, error = parse_model_json(raw_text, int(args.score_max))
-            if scores_obj is not None:
-                actual = set(scores_obj.keys())
-                if actual != expected_labels:
-                    parse_ok = False
-                    missing = sorted(expected_labels - actual)
-                    extras = sorted(actual - expected_labels)
-                    details = []
-                    if missing:
-                        details.append(f"missing={','.join(missing[:5])}")
-                    if extras:
-                        details.append(f"extras={','.join(extras[:5])}")
-                    error = "label_mismatch:" + ";".join(details)
+        true_value_id = (source_row.get(args.label_column) or "").strip()
+        sample_index = (source_row.get(args.sample_index_column) or "").strip()
+        source_id = (source_row.get(args.id_column) or "").strip()
 
-        row_out: dict[str, Any] = {
-            "row_number": source_row_number,
-            "text_hash": text_hash(source_sentence),
-            "prompt_type": args.prompt_type,
-            "truncated_input": "1" if truncated_input else "0",
+        if forced_error:
+            parse_ok = False
+            predicted_value_id = "parse_error"
+        else:
+            parse_ok, predicted_value_id, _ = parse_one_label_json(raw_text, one_label_valid_labels)
+
+        row_out = {
+            "sample_index": sample_index,
+            "id": source_id,
+            "sentence": source_sentence,
+            "value_id": true_value_id,
+            "predicted_value_id": predicted_value_id,
             "parse_ok": "1" if parse_ok else "0",
-            "scores_json": json.dumps(scores_obj, ensure_ascii=False, separators=(",", ":")) if scores_obj else "",
-            "error": error,
+            "correct": "1"
+            if canonicalize_label(true_value_id) == canonicalize_label(predicted_value_id)
+            else "0",
         }
-        if args.include_text:
-            row_out["text"] = source_sentence
         writer.writerow(row_out)
         total_written += 1
 
-    def process_single_row(row_item: tuple[int, str], writer: csv.DictWriter) -> None:
+    def process_single_row(row_item: tuple[int, str, dict[str, str]], writer: csv.DictWriter) -> None:
         nonlocal total_truncated, total_context_errors
-        source_row_number, sentence_text = row_item
+        source_row_number, sentence_text, source_row = row_item
         model_sentence = sentence_text
         was_truncated = False
 
@@ -520,6 +618,7 @@ def main() -> int:
                 writer,
                 source_row_number,
                 sentence_text,
+                source_row,
                 "",
                 truncated_input=was_truncated,
                 forced_error="context_overflow_unrecoverable",
@@ -539,6 +638,7 @@ def main() -> int:
                 writer,
                 source_row_number,
                 sentence_text,
+                source_row,
                 raw,
                 truncated_input=was_truncated,
             )
@@ -552,12 +652,13 @@ def main() -> int:
                 writer,
                 source_row_number,
                 sentence_text,
+                source_row,
                 "",
                 truncated_input=was_truncated,
                 forced_error=error_label,
             )
 
-    def process_batch(rows: list[tuple[int, str]], writer: csv.DictWriter) -> None:
+    def process_batch(rows: list[tuple[int, str, dict[str, str]]], writer: csv.DictWriter) -> None:
         if not rows:
             return
 
@@ -566,16 +667,17 @@ def main() -> int:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": s},
             ]
-            for _, s in rows
+            for _, s, _ in rows
         ]
         try:
             outputs = llm.chat(conversations, sampling)
-            for (source_row_number, sentence_text), out in zip(rows, outputs):
+            for (source_row_number, sentence_text, source_row), out in zip(rows, outputs):
                 raw = out.outputs[0].text if out.outputs else ""
                 write_result_row(
                     writer,
                     source_row_number,
                     sentence_text,
+                    source_row,
                     raw,
                     truncated_input=False,
                 )
@@ -598,6 +700,13 @@ def main() -> int:
         if not reader.fieldnames:
             print("ERROR: input CSV has no header", file=sys.stderr)
             return 1
+        if args.text_column not in reader.fieldnames:
+            print(f"ERROR: missing text column '{args.text_column}' in input CSV", file=sys.stderr)
+            return 1
+        for required_column in [args.sample_index_column, args.id_column, args.label_column]:
+            if required_column not in reader.fieldnames:
+                print(f"ERROR: missing required column '{required_column}' in input CSV", file=sys.stderr)
+                return 1
 
         writer = csv.DictWriter(out_f, fieldnames=out_fields)
         if not out_exists:
@@ -619,7 +728,7 @@ def main() -> int:
 
             accepted_rows += 1
 
-            batch_rows.append((row_idx, sentence))
+            batch_rows.append((row_idx, sentence, row))
             if len(batch_rows) < max(1, int(args.batch_size)):
                 continue
 
@@ -649,6 +758,9 @@ def main() -> int:
     print(f"Done. Wrote {total_written} rows in {elapsed:.1f}s ({total_written / elapsed:.2f} rows/s)")
     print(f"Truncated rows: {total_truncated} | Context-overflow failures: {total_context_errors}")
     print(f"Output: {output_csv}")
+    run_name = args.metrics_run_name.strip() or output_csv.stem
+    write_one_label_metrics(output_csv, labels, run_name)
+    print(f"Metrics prefix: {output_csv.parent / run_name}")
     return 0
 
 

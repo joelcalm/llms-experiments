@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=vllm-scores
+#SBATCH --job-name=vllm-one-label
 #SBATCH --time=20:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
@@ -12,7 +12,12 @@
 set -euo pipefail
 
 # Usage:
-#   sbatch submit-vllm.sh [PROMPT_TYPE] [SCORE_MAX] [INPUT_CSV] [OUTPUT_CSV] [MODEL] [extra batch_infer_simple.py args...]
+#   sbatch submit-vllm.sh [PROMPT_TYPE] [INPUT_CSV] [OUTPUT_CSV] [MODEL] [extra batch_infer_simple.py args...]
+#
+# Defaults:
+#   PROMPT_TYPE=MFT
+#   INPUT_CSV=protoethosv2_3m_finalqc_20260512.csv
+#   SAMPLE_SIZE=100000
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -45,14 +50,15 @@ if [[ ! -f "$CODE_DIR/batch_infer_simple.py" ]]; then
     exit 2
 fi
 
+SAMPLE_SEED="${SAMPLE_SEED:-20260417}"
 PROMPT_TYPE="${1:-MFT}"
-SCORE_MAX="${2:-100}"
-INPUT_CSV="${3:-$CODE_DIR/v2_3m_final_clean_text.csv}"
-OUTPUT_CSV="${4:-$OUTPUT_DIR/${PROMPT_TYPE,,}_scores_0_${SCORE_MAX}_1m_seed20260417_${SLURM_JOB_ID:-local}.csv}"
-MODEL="${5:-qwen-2b-awq}"
-
-if [[ $# -ge 5 ]]; then
-    shift 5
+INPUT_CSV="${2:-$CODE_DIR/protoethosv2_3m_finalqc_20260512.csv}"
+SAMPLE_SIZE="${SAMPLE_SIZE:-100000}"
+RUN_NAME="${RUN_NAME:-${PROMPT_TYPE,,}_one_label_${SAMPLE_SIZE}_seed${SAMPLE_SEED}_${SLURM_JOB_ID:-local}}"
+OUTPUT_CSV="${3:-$OUTPUT_DIR/${RUN_NAME}.csv}"
+MODEL="${4:-qwen-2b-awq}"
+if [[ $# -ge 4 ]]; then
+    shift 4
 else
     shift $#
 fi
@@ -69,22 +75,12 @@ case "$PROMPT_TYPE" in
         ;;
 esac
 
-case "$SCORE_MAX" in
-    100)
-        PROMPT_FILE_NAME="prompt_examples_0_100.md"
+case "$PROMPT_TYPE" in
+    MFT)
+        PROMPT_FILE_NAME="mft_one_label.txt"
         ;;
-    20)
-        PROMPT_FILE_NAME="prompt_examples_0_20.md"
-        ;;
-    10)
-        PROMPT_FILE_NAME="prompt_examples_0_10.md"
-        ;;
-    5)
-        PROMPT_FILE_NAME="prompt_examples_0_5.md"
-        ;;
-    *)
-        echo "ERROR: SCORE_MAX must be one of: 100, 20, 10, 5 (got '$SCORE_MAX')" >&2
-        exit 2
+    SHVT)
+        PROMPT_FILE_NAME="shvt_one_label.txt"
         ;;
 esac
 
@@ -103,9 +99,7 @@ if [[ ! -f "$PROMPT_MD" ]]; then
     exit 2
 fi
 
-SAMPLE_SIZE="${SAMPLE_SIZE:-1000000}"
-SAMPLE_SEED="${SAMPLE_SEED:-20260417}"
-SAMPLED_CSV="${SAMPLED_CSV:-$OUTPUT_DIR/sample_${SAMPLE_SIZE}_seed${SAMPLE_SEED}.csv}"
+SAMPLED_CSV="${SAMPLED_CSV:-$OUTPUT_DIR/sample_${PROMPT_TYPE,,}_one_label_${SAMPLE_SIZE}_seed${SAMPLE_SEED}.csv}"
 SAMPLER_SCRIPT="$CODE_DIR/sample_csv_deterministic.py"
 
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.94}"
@@ -135,6 +129,16 @@ if [[ ! -f "$SAMPLER_SCRIPT" ]]; then
     echo "ERROR: Missing sampler script: $SAMPLER_SCRIPT" >&2
     exit 2
 fi
+
+SAMPLE_TEXT_COLUMN="sentence"
+SAMPLER_EXTRA_ARGS=(--filter-column theory_id --filter-value "${PROMPT_TYPE,,}")
+INFER_ARGS=(
+    --text-column sentence
+    --id-column id
+    --label-column value_id
+    --sample-index-column sample_index
+    --metrics-run-name "$RUN_NAME"
+)
 
 if command -v spack >/dev/null 2>&1; then
     spack load python@3.11 || true
@@ -173,9 +177,10 @@ if [[ ! -f "$SAMPLED_CSV" ]]; then
         "$ENV_PYTHON" "$SAMPLER_SCRIPT" \
             --input-csv "$INPUT_CSV" \
             --output-csv "$SAMPLED_CSV" \
-            --text-column text \
+            --text-column "$SAMPLE_TEXT_COLUMN" \
             --sample-size "$SAMPLE_SIZE" \
-            --seed "$SAMPLE_SEED"
+            --seed "$SAMPLE_SEED" \
+            "${SAMPLER_EXTRA_ARGS[@]}"
 
         rmdir "$SAMPLE_LOCK_DIR" >/dev/null 2>&1 || true
         trap - EXIT
@@ -195,13 +200,13 @@ fi
 echo "Job:          ${SLURM_JOB_ID:-local}"
 echo "Node:         ${SLURMD_NODENAME:-n/a}"
 echo "Prompt type:  $PROMPT_TYPE"
-echo "Score max:    $SCORE_MAX"
 echo "Code dir:     $CODE_DIR"
 echo "Store dir:    $STORE_DIR"
 echo "Input CSV:    $SAMPLED_CSV"
 echo "Output CSV:   $OUTPUT_CSV"
 echo "Model:        $MODEL"
 echo "Prompt file:  $PROMPT_MD"
+echo "Sample size:  $SAMPLE_SIZE"
 echo "Sample seed:  $SAMPLE_SEED"
 echo "Runtime:      gpu_mem_util=$GPU_MEM_UTIL max_model_len=$MAX_MODEL_LEN max_num_seqs=$MAX_NUM_SEQS batch_size=$BATCH_SIZE"
 echo "vLLM mode:    enforce_eager=$VLLM_ENFORCE_EAGER prefix_caching=$VLLM_PREFIX_CACHING"
@@ -210,11 +215,10 @@ INFER_SCRIPT="$CODE_DIR/batch_infer_simple.py"
 
 srun "$ENV_PYTHON" "$INFER_SCRIPT" \
     --input-csv "$SAMPLED_CSV" \
-    --text-column text \
     --output-csv "$OUTPUT_CSV" \
     --prompt-md "$PROMPT_MD" \
     --prompt-type "$PROMPT_TYPE" \
-    --score-max "$SCORE_MAX" \
+    "${INFER_ARGS[@]}" \
     --model "$MODEL" \
     --runtime-profile a100 \
     --gpu-mem-util "$GPU_MEM_UTIL" \
