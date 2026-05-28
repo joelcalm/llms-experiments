@@ -4,8 +4,8 @@ Label set: MFT
 
 Task:
 - Input is ONE sentence.
-- Identify the single most prominent value label explicitly conveyed by the sentence.
-- The label should reflect the central action, state, behavior, goal, or moralized object described in the sentence.
+- Identify the single most prominent MFT label conveyed/invoked by the sentence.
+- Invocation includes praise, blame, appeal, critique, or framing.
 - Use ONLY what is in the sentence; do not assume external context.
 - Return exactly ONE label.
 - If no label is clearly invoked, return "none".
