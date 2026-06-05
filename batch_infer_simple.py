@@ -27,6 +27,7 @@ MODEL_PRESETS = {
     "qwen-2b-awq": "cyankiwi/Qwen3.5-2B-AWQ-4bit",
     "qwen-27b": "Qwen/Qwen3.5-27B",
     "gemma-31b": "google/gemma-4-31B-it",
+    "gemma-31b-awq": "cyankiwi/gemma-4-31B-it-AWQ-4bit",
     "ministral-14b": "mistralai/Ministral-3-14B-Instruct-2512",
 }
 
@@ -407,13 +408,13 @@ def main() -> int:
     ap.add_argument(
         "--language-model-only",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Disable multimodal inputs for VL models",
     )
     ap.add_argument(
         "--skip-mm-profiling",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Skip multimodal profiling during engine init",
     )
 

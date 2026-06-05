@@ -210,6 +210,8 @@ echo "Sample size:  $SAMPLE_SIZE"
 echo "Sample seed:  $SAMPLE_SEED"
 echo "Runtime:      gpu_mem_util=$GPU_MEM_UTIL max_model_len=$MAX_MODEL_LEN max_num_seqs=$MAX_NUM_SEQS batch_size=$BATCH_SIZE"
 echo "vLLM mode:    enforce_eager=$VLLM_ENFORCE_EAGER prefix_caching=$VLLM_PREFIX_CACHING"
+TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-1}"
+echo "Tensor parallel size: $TENSOR_PARALLEL_SIZE"
 
 INFER_SCRIPT="$CODE_DIR/batch_infer_simple.py"
 
@@ -227,7 +229,7 @@ srun "$ENV_PYTHON" "$INFER_SCRIPT" \
     --batch-size "$BATCH_SIZE" \
     --max-tokens "$MAX_TOKENS" \
     --context-reserve-tokens "$CONTEXT_RESERVE_TOKENS" \
-    --tensor-parallel-size 1 \
+    --tensor-parallel-size "${TENSOR_PARALLEL_SIZE:-1}" \
     --dtype bfloat16 \
     "${RUNTIME_EXTRA_ARGS[@]}" \
     --resume \
