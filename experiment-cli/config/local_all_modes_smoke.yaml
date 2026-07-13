@@ -1,13 +1,11 @@
 run:
   id: local_all_modes_smoke
   seed: 123
-
 input:
   path: data/smoke.parquet
   format: parquet
   id_column: id
   text_column: text
-
 model:
   name: Qwen/Qwen3.5-0.8B
   backend: local_vllm
@@ -16,54 +14,48 @@ model:
   max_num_seqs: 128
   enable_prefix_caching: true
   synchronize_cuda: false
-
 variants:
   - id: single_label_json
     request_mode: generate
     max_tokens: 16
-    prompts: [prompts/shared/system.md, prompts/tasks/single_label.md, prompts/output/json.md]
-    validation: {schema: prompts/schemas/single_label.json}
+    prompts: [prompt/system.md, prompt/task-single-label.md, prompt/output-json.md]
+    validation: {schema: prompt/schema-single-label.json}
   - id: multi_label_json
     request_mode: generate
     max_tokens: 16
-    prompts: [prompts/shared/system.md, prompts/tasks/multi_label.md, prompts/output/json.md]
-    validation: {schema: prompts/schemas/multi_label.json}
+    prompts: [prompt/system.md, prompt/task-multi-label.md, prompt/output-json.md]
+    validation: {schema: prompt/schema-multi-label.json}
   - id: ordinal_score_json
     request_mode: generate
     max_tokens: 16
-    prompts: [prompts/shared/system.md, prompts/tasks/ordinal_score.md, prompts/output/json.md]
-    validation: {schema: prompts/schemas/ordinal_score.json}
+    prompts: [prompt/system.md, prompt/task-ordinal-score.md, prompt/output-json.md]
+    validation: {schema: prompt/schema-ordinal-score.json}
   - id: single_label_code_logits
     request_mode: candidate_logprobs
     candidates: [A, B, C]
-    prompts: [prompts/shared/system.md, prompts/tasks/single_label_code.md]
+    prompts: [prompt/system.md, prompt/task-single-label-code.md]
   - id: independent_yes_no_logits
     request_mode: candidate_logprobs
     candidates: [yes, no]
-    prompts: [prompts/shared/system.md, prompts/tasks/yes_no.md]
-
+    prompts: [prompt/system.md, prompt/task-yes-no.md]
 batch:
   mode: auto
   candidates: [1, 2, 4, 8, 16, 32, 64, 128]
   warmup_rows: 64
   min_size: 1
   on_failure: halve
-
 validation:
   enabled: true
   retry:
     enabled: true
     max_attempts: 2
-    correction_prompt: prompts/retry/structured_output.md
-
+    correction_prompt: prompt/retry-structured-output.md
 output:
   directory: outputs/local_all_modes_smoke
   format: parquet
   include_text: false
   include_raw_response: true
-
 logging:
   level: INFO
   file: logs/local_all_modes_smoke.log
   events: logs/local_all_modes_smoke.events.jsonl
-  gpu_sampling_seconds: 2
