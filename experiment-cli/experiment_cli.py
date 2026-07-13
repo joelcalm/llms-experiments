@@ -516,18 +516,173 @@ def prepare(config: dict[str, Any]) -> Path:
                     "row_id": row[config["input"]["id_column"]],
                     "output_schema": json.dumps(schema or {}),
                 }
+                body: dict[str, Any] = {
+                    "model": config["model"]["name"],
+                    "messages": [{"role": "user", "content": prompt(config, variant["prompts"], values)}],
+                    "temperature": 0,
+                }
+                if variant["request_mode"] == "candidate_logprobs":
+                    body.update(
+                        {
+                            "max_completion_tokens": 1,
+                            "logprobs": True,
+                            "top_logprobs": max(20, len(variant["candidates"]) + 5),
+                        }
+                    )
+                else:
+                    body["max_completion_tokens"] = variant.get("max_tokens", 128)
+                    if schema:
+                        body["response_format"] = {
+                            "type": "json_schema",
+                            "json_schema": {"name": variant["id"], "schema": schema, "strict": True},
+                        }
                 handle.write(
                     json.dumps(
                         {
                             "custom_id": f"{variant['id']}:{row[config['input']['id_column']]}",
-                            "variant_id": variant["id"],
-                            "input_row_id": str(row[config["input"]["id_column"]]),
-                            "prompt": prompt(config, variant["prompts"], values),
+                            "method": "POST",
+                            "url": "/v1/chat/completions",
+                            "body": body,
                         }
                     )
                     + "\n"
                 )
     return path
+
+
+def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, dict[str, float] | None]:
+    response = item.get("response") or {}
+    if item.get("error") or response.get("status_code", 200) != 200:
+        return None, str(item.get("error") or response.get("status_code", "batch_response_error")), None
+    choice = ((response.get("body") or {}).get("choices") or [{}])[0]
+    content = (choice.get("message") or {}).get("content")
+    if content is None:
+        return None, "missing_chat_completion_content", None
+    observed: dict[str, float] = {}
+    for token in (choice.get("logprobs") or {}).get("content") or []:
+        for candidate in token.get("top_logprobs") or []:
+            observed[str(candidate.get("token", "")).strip()] = float(candidate.get("logprob", -float("inf")))
+    return str(content), None, observed or None
+
+
+def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, Any]:
+    source = Path(response_path)
+    if source.is_dir():
+        source = source / "responses.jsonl"
+    responses = {
+        str(item["custom_id"]): item
+        for line in source.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+        for item in [json.loads(line)]
+    }
+    run_id = config["run"]["id"]
+    run_dir = resolve(config, config["output"]["directory"])
+    logging_config = config.get("logging", {})
+    events = Events(
+        resolve(config, logging_config.get("file", f"logs/{run_id}.log")),
+        resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
+        logging_config.get("level", "INFO"),
+    )
+    rows = read_rows(
+        resolve(config, config["input"]["path"]),
+        config["input"]["format"],
+        config["input"]["id_column"],
+        config["input"]["text_column"],
+    )
+    result_path = run_dir / "results.parquet"
+    saved = pq.read_table(result_path).to_pylist() if result_path.exists() else []
+    complete = {(str(row["variant_id"]), str(row["input_row_id"])) for row in saved}
+    for variant in config["variants"]:
+        schema_path = variant.get("validation", {}).get("schema")
+        schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+        for row in rows:
+            row_id = str(row[config["input"]["id_column"]])
+            if (variant["id"], row_id) in complete:
+                continue
+            values = {
+                "text": row[config["input"]["text_column"]],
+                "row_id": row_id,
+                "output_schema": json.dumps(schema or {}, sort_keys=True),
+            }
+            current_prompt = prompt(config, variant["prompts"], values)
+            raw, batch_error, observed = _batch_text(responses.get(f"{variant['id']}:{row_id}", {}))
+            parsed, errors = (
+                validate_response(raw or "", schema)
+                if raw is not None
+                else (None, [batch_error or "missing_batch_response"])
+            )
+            scores: dict[str, float] | None = None
+            if variant["request_mode"] == "candidate_logprobs" and observed is not None:
+                scores = {
+                    candidate: observed.get(str(candidate).strip(), -float("inf"))
+                    for candidate in variant["candidates"]
+                }
+                parsed, errors = {"candidates": scores}, []
+            saved.append(
+                {
+                    "run_id": run_id,
+                    "variant_id": variant["id"],
+                    "input_row_id": row_id,
+                    "source_position": row["_source_position"],
+                    "input_text": str(row[config["input"]["text_column"]])
+                    if config["output"].get("include_text")
+                    else None,
+                    "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
+                    "config_hash": hashlib.sha256(json.dumps(variant, sort_keys=True).encode()).hexdigest(),
+                    "attempt_count": 1,
+                    "raw_response": raw if config["output"].get("include_raw_response", True) else None,
+                    "parsed_output": serialise(parsed),
+                    "validation_status": "valid" if not errors else "invalid",
+                    "validation_errors": serialise(errors),
+                    "final_status": "completed" if not errors else "failed_validation",
+                    "batch_size": None,
+                    "latency_seconds": None,
+                    "rows_per_second": None,
+                    "token_count": None,
+                    "gpu_snapshot": None,
+                    "candidate_logprobs": serialise(scores),
+                }
+            )
+    write_results(run_dir, saved)
+    manifest = {
+        "run_id": run_id,
+        "input_rows": len(rows),
+        "result_rows": len(saved),
+        "model": config["model"],
+        "variants": {variant["id"]: {"external_batch": True} for variant in config["variants"]},
+        "batch_response_path": str(source),
+        "resume_skipped_rows": len(complete),
+        "event_log": str(events.path),
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    events.emit("batch_parse_completed", result_rows=len(saved), response_path=str(source))
+    return manifest
+
+
+def batch_command(config: dict[str, Any]) -> str:
+    run_dir = resolve(config, config["output"]["directory"])
+    model = config["model"]
+    command = [
+        "uv",
+        "run",
+        "vllm",
+        "run-batch",
+        "-i",
+        str(run_dir / "requests.jsonl"),
+        "-o",
+        str(run_dir / "responses.jsonl"),
+        "--model",
+        model["name"],
+        "--gpu-memory-utilization",
+        str(model.get("gpu_memory_utilization", 0.9)),
+        "--max-model-len",
+        str(model.get("max_model_len", 2048)),
+        "--max-num-seqs",
+        str(model.get("max_num_seqs", 128)),
+    ]
+    if model.get("enable_prefix_caching", True):
+        command.append("--enable-prefix-caching")
+    return " ".join(command)
 
 
 def self_test(config: dict[str, Any]) -> None:
@@ -554,15 +709,22 @@ def self_test(config: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("validate", "run", "prepare", "self-test"):
+    for name in ("validate", "run", "prepare", "batch-command", "self-test"):
         command = commands.add_parser(name)
         command.add_argument("--config", required=True)
+    parse = commands.add_parser("parse")
+    parse.add_argument("--config", required=True)
+    parse.add_argument("--responses", required=True)
     args = parser.parse_args()
     config = load_config(args.config)
     if args.command == "validate":
         print(f"Valid configuration: {config['run']['id']}")
     elif args.command == "prepare":
         print(prepare(config))
+    elif args.command == "batch-command":
+        print(batch_command(config))
+    elif args.command == "parse":
+        print(json.dumps(parse_batch(config, args.responses), indent=2))
     elif args.command == "self-test":
         self_test(config)
         print("Self-test passed")

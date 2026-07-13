@@ -48,6 +48,41 @@ For JSON variants, the JSON Schema is used both to constrain vLLM output and to 
 
 The runner tunes a batch size separately per variant. The manifest records every candidate, throughput, latency, telemetry snapshot, and selected size. Re-running a completed configuration resumes by `(variant_id, input_row_id)` and does not load a model when no rows remain.
 
+## Artemisa: `vllm run-batch`
+
+For a scheduled Artemisa job, prepare OpenAI Batch-compatible JSONL without loading a model:
+
+```bash
+uv run python experiment-cli/experiment_cli.py prepare \
+  --config experiment-cli/config/local_all_modes_smoke.yaml
+
+uv run python experiment-cli/experiment_cli.py batch-command \
+  --config experiment-cli/config/local_all_modes_smoke.yaml
+```
+
+The first command writes `experiment-cli/outputs/local_all_modes_smoke/requests.jsonl`. The second prints the exact command for the worker, equivalent to:
+
+```bash
+uv run vllm run-batch \
+  -i experiment-cli/outputs/local_all_modes_smoke/requests.jsonl \
+  -o experiment-cli/outputs/local_all_modes_smoke/responses.jsonl \
+  --model Qwen/Qwen3.5-0.8B \
+  --gpu-memory-utilization 0.92 --max-model-len 2048 --max-num-seqs 128 \
+  --enable-prefix-caching
+```
+
+`requests.jsonl` uses the vLLM/OpenAI Batch form: a unique `custom_id`, `POST`, `/v1/chat/completions`, and a request body. JSON variants carry `response_format: json_schema`; scoring variants request one token with top log-probabilities. Thus all five configured strategies can use `run-batch` in one Artemisa job.
+
+After the worker writes `responses.jsonl`, parse it without GPU inference:
+
+```bash
+uv run python experiment-cli/experiment_cli.py parse \
+  --config experiment-cli/config/local_all_modes_smoke.yaml \
+  --responses experiment-cli/outputs/local_all_modes_smoke/responses.jsonl
+```
+
+The parser checks response status and JSON schemas, extracts top token log-probabilities for the two scoring variants, and writes the same Parquet contract and manifest as `run`. It keeps invalid or missing remote results as explicit failures, which makes a follow-up batch safe to prepare instead of silently losing rows.
+
 ## Outputs
 
 For `output.directory: outputs/my_run`, the runner writes:
