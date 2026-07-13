@@ -1,0 +1,1 @@
+{"type":"object","properties":{"labels":{"type":"array","items":{"type":"string","enum":["alpha","beta","gamma"]}}},"required":["labels"],"additionalProperties":false}
