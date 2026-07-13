@@ -1,26 +1,79 @@
-# experiment-cli
+# Generic experiment CLI
 
-`experiment-cli` is a configuration-driven runner for local LLM experiments. It deliberately contains no theory, classifier, or application-specific assumptions: variants, prompt fragments, schemas, candidate sets, output paths, and batching policy are YAML data.
+`experiment_cli.py` runs local LLM experiments without embedding an application domain in Python. The YAML configuration chooses the input columns, model, prompt fragments, output schemas, candidate sets, batching policy, and result location.
 
-Run the local configuration checks with:
+## Layout
 
-```bash
-cd protoethos
-uv run python llms-experiments/experiment-cli/cli.py validate --config llms-experiments/experiment-cli/configs/local_all_modes_smoke.yaml
+```text
+experiment-cli/
+  experiment_cli.py        # the only Python implementation file
+  config/                  # YAML configurations
+  data/                    # input fixtures
+  prompt/                  # Markdown prompt fragments and JSON schemas
 ```
 
-Generate the 128-row Parquet smoke input once if it is absent:
+Each support directory is one level deep. Generated `outputs/` and `logs/` are ignored by Git.
+
+## Quick start
+
+From the repository root, create the uv environment and run the deterministic local contract check:
 
 ```bash
-uv run python llms-experiments/experiment-cli/data/make_smoke_data.py
+uv sync
+uv run python experiment-cli/experiment_cli.py validate \
+  --config experiment-cli/config/local_all_modes_smoke.yaml
+
+uv run python experiment-cli/experiment_cli.py self-test \
+  --config experiment-cli/config/local_all_modes_smoke.yaml
 ```
 
-The configured `run` command loads one vLLM instance and processes all variants sequentially. It tunes each variant independently, records rejected candidates and GPU snapshots (including PyTorch allocated/reserved peaks where available), retries failed structured outputs when enabled, and resumes by `(variant_id, input_row_id)` without duplicate rows. Set `model.synchronize_cuda: true` when measuring fully synchronised timings.
+`self-test` uses the built-in fake backend, writes only temporary files, and checks all five request modes plus resume behaviour.
+
+## Run locally on the GPU
 
 ```bash
-uv run python llms-experiments/experiment-cli/cli.py run --config llms-experiments/experiment-cli/configs/local_all_modes_smoke.yaml
+uv run python experiment-cli/experiment_cli.py run \
+  --config experiment-cli/config/local_all_modes_smoke.yaml
 ```
 
-`prepare` writes request JSONL, while `parse --responses PATH` consumes a `responses.jsonl` whose rows have `variant_id`, `input_row_id`, and `response` (or `raw_response`). Both use the same output and validation contracts.
+The smoke configuration loads `Qwen/Qwen3.5-0.8B` once and runs, in sequence:
 
-The actual smoke configuration requires vLLM and a functioning NVIDIA driver. `run` reports a clear preflight error if `nvidia-smi` is unavailable or cannot communicate with the driver.
+1. single-label JSON;
+2. multi-label JSON;
+3. ordinal-score JSON;
+4. candidate code log-probabilities;
+5. independent yes/no log-probabilities.
+
+For JSON variants, the JSON Schema is used both to constrain vLLM output and to validate the saved response. Invalid results are retried according to `validation.retry`; final failures remain in Parquet rather than being dropped.
+
+The runner tunes a batch size separately per variant. The manifest records every candidate, throughput, latency, telemetry snapshot, and selected size. Re-running a completed configuration resumes by `(variant_id, input_row_id)` and does not load a model when no rows remain.
+
+## Outputs
+
+For `output.directory: outputs/my_run`, the runner writes:
+
+```text
+outputs/my_run/
+  results.parquet
+  single_label_json.parquet
+  multi_label_json.parquet
+  ordinal_score_json.parquet
+  single_label_code_logits.parquet
+  independent_yes_no_logits.parquet
+  manifest.json
+  effective_config.yaml
+```
+
+The matching human-readable log and JSONL event log are placed in `logs/` as configured.
+
+## Create a configuration
+
+Copy `config/local_all_modes_smoke.yaml`, then change only data:
+
+- `input`: the source path, format, and ID/text columns;
+- `model`: the vLLM model and GPU limits;
+- `variants`: prompt files, schemas, or candidate strings;
+- `batch`: candidate sizes and warm-up row count;
+- `output` and `logging`: ignored local destinations.
+
+Prompt substitutions are intentionally limited to `{{text}}`, `{{row_id}}`, `{{output_schema}}`, `{{raw_response}}`, and `{{validation_errors}}`.
