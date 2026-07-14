@@ -204,6 +204,9 @@ Copy `experiments/local_all_modes_smoke.yaml`, then change only data:
 - `batch`: candidate sizes and warm-up row count;
 - `output` and `logging`: ignored local destinations.
 
+When a source provides labels, result rows include the serialised
+`gold_labels` field alongside the prediction fields.
+
 Prompt substitutions are intentionally limited to `{{text}}`, `{{row_id}}`,
 `{{dataset_id}}`, `{{candidates}}`, `{{output_schema}}`, `{{raw_response}}`,
 and `{{validation_errors}}`.
@@ -217,7 +220,10 @@ slices of ProtoEthos. It uses the model
 listed above. Dataset readers are format-driven: nested MFTC JSON, materialised
 JSONL records, and the semicolon-delimited ProtoEthos CSV are all normalised to
 the same `id`/`text` row contract. Gold labels are retained as `_gold_labels`
-for downstream scoring, but the runner itself remains domain-agnostic.
+for downstream scoring, but the runner itself remains domain-agnostic. The
+generic `alpha/beta/gamma`, `A/B/C`, and `yes/no` choices in this example are
+interface-smoke defaults, not the label vocabularies of those five datasets;
+define dataset-specific schemas/candidates before claiming evaluation scores.
 
 Validate the external data paths before launching:
 

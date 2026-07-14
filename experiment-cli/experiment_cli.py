@@ -30,6 +30,7 @@ import yaml
 
 MODES = {"generate", "candidate_logprobs"}
 TOKEN = re.compile(r"{{\s*(text|row_id|dataset_id|output_schema|raw_response|validation_errors|candidates)\s*}}")
+UNRESOLVED_TOKEN = re.compile(r"{{\s*[^{}]+\s*}}")
 
 
 def resolve(config: dict[str, Any], value: str | Path) -> Path:
@@ -54,13 +55,14 @@ def _set_path(config: dict[str, Any], dotted: str, value: Any) -> None:
         current[last] = value
 
 
-def load_config(path: str | Path, overrides: list[str] | None = None) -> dict[str, Any]:
+def load_config(path: str | Path, overrides: list[str] | None = None, *, check_files: bool = True) -> dict[str, Any]:
     path = Path(path).resolve()
     config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(config, dict):
         raise ValueError("Experiment configuration must be a YAML mapping")
     config = deepcopy(config)
     config["_root"] = str(path.parent.parent if path.parent.name in {"config", "experiments"} else path.parent)
+    override_keys: list[str] = []
     for item in overrides or []:
         if "=" not in item:
             raise ValueError(f"Override must use KEY=VALUE syntax: {item}")
@@ -68,7 +70,9 @@ def load_config(path: str | Path, overrides: list[str] | None = None) -> dict[st
         if not key:
             raise ValueError(f"Override key is empty: {item}")
         _set_path(config, key, yaml.safe_load(raw_value))
-    validate_config(config, check_files=True)
+        override_keys.append(key)
+    config["_override_keys"] = override_keys
+    validate_config(config, check_files=check_files)
     return config
 
 
@@ -261,21 +265,41 @@ def select_dataset(config: dict[str, Any], dataset_id: str) -> dict[str, Any]:
     raise ValueError(f"Unknown dataset id: {dataset_id}")
 
 
+def require_single_input(config: dict[str, Any], command: str) -> None:
+    if "datasets" in config:
+        raise ValueError(f"{command} requires one input; use --dataset or {command}-matrix for a matrix config")
+
+
 def rows_for_source(config: dict[str, Any], source: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+    resolved_source = dict(source)
+    if resolved_source.get("format") == "paired_tsv" and resolved_source.get("labels_path"):
+        resolved_source["labels_path"] = str(resolve(config, resolved_source["labels_path"]))
     rows = read_rows(
-        resolve(config, source["path"]),
-        source["format"],
-        source["id_column"],
-        source["text_column"],
-        source,
+        resolve(config, resolved_source["path"]),
+        resolved_source["format"],
+        resolved_source["id_column"],
+        resolved_source["text_column"],
+        resolved_source,
     )
     configured_limit = source.get("limit")
     effective_limit = limit if limit is not None else configured_limit
-    return rows[: int(effective_limit)] if effective_limit else rows
+    if effective_limit is not None:
+        if int(effective_limit) < 1:
+            raise ValueError("row limit must be positive")
+        return rows[: int(effective_limit)]
+    return rows
+
+
+def row_key(row: dict[str, Any], config: dict[str, Any]) -> tuple[str, int]:
+    return (str(row[config["input"]["id_column"]]), int(row["_source_position"]))
 
 
 def render(template: str, values: dict[str, Any]) -> str:
-    return TOKEN.sub(lambda match: str(values.get(match.group(1), "")), template)
+    rendered = TOKEN.sub(lambda match: str(values.get(match.group(1), "")), template)
+    unresolved = UNRESOLVED_TOKEN.search(rendered)
+    if unresolved:
+        raise ValueError(f"Unsupported or unresolved prompt placeholder: {unresolved.group(0)}")
+    return rendered
 
 
 def prompt(config: dict[str, Any], paths: list[str], values: dict[str, Any]) -> str:
@@ -463,7 +487,8 @@ class VLLMBackend:
                 )
             params = self.params(**kwargs)
         try:
-            outputs = self.llm.generate(prompts, params, use_tqdm=False)
+            conversations = [[{"role": "user", "content": item}] for item in prompts]
+            outputs = self.llm.chat(conversations, params, use_tqdm=False)
         except Exception as exc:
             if any(word in str(exc).lower() for word in ("out of memory", "oom", "context length", "max model len")):
                 raise BackendFailure(str(exc)) from exc
@@ -486,6 +511,10 @@ class VLLMBackend:
         return result
 
     def close(self) -> None:
+        try:
+            self.llm.llm_engine.engine_core.shutdown()
+        except Exception:
+            pass
         del self.llm
 
 
@@ -497,7 +526,8 @@ def tune(
     attempts: list[dict[str, Any]] = []
     safe: list[tuple[float, int]] = []
     candidates = sorted(set(int(item) for item in batch.get("candidates", [1])))
-    warmup = prompts[: int(batch.get("warmup_rows", 64))] or prompts[:1]
+    warmup_rows = int(batch.get("warmup_rows", 64))
+    warmup = prompts[: max(warmup_rows, *candidates)] or prompts[:1]
     for size in candidates:
         sync_cuda(sync)
         started = time.perf_counter()
@@ -545,6 +575,10 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
     run_id = config["run"]["id"]
     run_dir = resolve(config, config["output"]["directory"])
     logging_config = config.get("logging", {})
+    if any(key in config.get("_override_keys", []) for key in ("run.id", "output.directory")):
+        logging_config = dict(logging_config)
+        logging_config["file"] = str(run_dir / "logs" / f"{run_id}.log")
+        logging_config["events"] = str(run_dir / "logs" / f"{run_id}.events.jsonl")
     events = Events(
         resolve(config, logging_config.get("file", f"logs/{run_id}.log")),
         resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
@@ -553,7 +587,9 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
     rows = rows_for_source(config, config["input"], row_limit)
     result_path = run_dir / "results.parquet"
     existing = pq.read_table(result_path).to_pylist() if result_path.exists() else []
-    complete = {(str(row["variant_id"]), str(row["input_row_id"])) for row in existing}
+    complete = {
+        (str(row["variant_id"]), str(row["input_row_id"]), int(row.get("source_position") or -1)) for row in existing
+    }
     previous = (
         json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
         if (run_dir / "manifest.json").exists()
@@ -565,7 +601,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
     correction = resolve(config, correction_path).read_text(encoding="utf-8") if correction_path else None
     try:
         for variant in config["variants"]:
-            pending = [row for row in rows if (variant["id"], str(row[config["input"]["id_column"]])) not in complete]
+            pending = [row for row in rows if (variant["id"], *row_key(row, config)) not in complete]
             if not pending:
                 events.emit("variant_resumed", variant=variant["id"], skipped=len(rows))
                 continue
@@ -582,15 +618,41 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
             size, attempts = tune(
                 backend, request_variant, prompts, batch, events, bool(config["model"].get("synchronize_cuda", False))
             )
+            size = min(size, maximum)
             selected[variant["id"]] = {"selected_batch_size": size, "tuning": attempts, "pending_rows": len(pending)}
             events.emit("variant_started", variant=variant["id"], rows=len(pending), batch_size=size)
-            for offset in range(0, len(pending), size):
+            offset = 0
+            while offset < len(pending):
                 chunk, chunk_prompts = pending[offset : offset + size], prompts[offset : offset + size]
                 sync_cuda(bool(config["model"].get("synchronize_cuda", False)))
                 started = time.perf_counter()
-                responses = backend.generate(chunk_prompts, request_variant)
+                while True:
+                    try:
+                        responses = backend.generate(chunk_prompts, request_variant)
+                        if len(responses) != len(chunk):
+                            raise BackendFailure(
+                                f"Backend returned {len(responses)} responses for {len(chunk)} prompts"
+                            )
+                        break
+                    except BackendFailure as exc:
+                        minimum = int(batch.get("min_size", 1))
+                        if len(chunk) <= minimum:
+                            raise
+                        new_size = max(minimum, len(chunk) // 2)
+                        events.emit(
+                            "batch_runtime_backoff",
+                            variant=variant["id"],
+                            old_batch_size=len(chunk),
+                            new_batch_size=new_size,
+                            error=str(exc),
+                        )
+                        size = new_size
+                        selected[variant["id"]]["runtime_batch_size"] = size
+                        chunk = pending[offset : offset + size]
+                        chunk_prompts = prompts[offset : offset + size]
                 sync_cuda(bool(config["model"].get("synchronize_cuda", False)))
                 elapsed = max(time.perf_counter() - started, 1e-9)
+                batch_gpu = gpu()
                 for row, current_prompt, response in zip(chunk, chunk_prompts, responses):
                     parsed, errors = validate_response(response.raw, schema)
                     raw, count = response.raw, 1
@@ -635,6 +697,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                             "input_text": str(row[config["input"]["text_column"]])
                             if config["output"].get("include_text")
                             else None,
+                            "gold_labels": serialise(row.get("_gold_labels")),
                             "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
                             "config_hash": hashlib.sha256(json.dumps(variant, sort_keys=True).encode()).hexdigest(),
                             "attempt_count": count,
@@ -647,7 +710,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                             "latency_seconds": elapsed / len(chunk),
                             "rows_per_second": len(chunk) / elapsed,
                             "token_count": response.token_count,
-                            "gpu_snapshot": serialise(gpu()),
+                            "gpu_snapshot": serialise(batch_gpu),
                             "candidate_logprobs": serialise(response.candidate_logprobs),
                         }
                     )
@@ -659,6 +722,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                     rows_per_second=len(chunk) / elapsed,
                     gpu=gpu(),
                 )
+                offset += len(chunk)
             write_results(run_dir, existing)
             events.emit("variant_completed", variant=variant["id"], rows=len(pending))
     finally:
@@ -836,7 +900,7 @@ def request_for_row(
                 "json_schema": {"name": variant["id"], "schema": schema, "strict": True},
             }
     return {
-        "custom_id": f"{variant['id']}:{row[config['input']['id_column']]}",
+        "custom_id": f"{variant['id']}:{row[config['input']['id_column']]}:{row['_source_position']}",
         "method": "POST",
         "url": "/v1/chat/completions",
         "body": body,
@@ -870,12 +934,15 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
     source = Path(response_path)
     if source.is_dir():
         source = source / "responses.jsonl"
-    responses = {
-        str(item["custom_id"]): item
-        for line in source.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-        for item in [json.loads(line)]
-    }
+    responses: dict[str, dict[str, Any]] = {}
+    for line in source.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        custom_id = str(item["custom_id"])
+        if custom_id in responses:
+            raise ValueError(f"Duplicate custom_id in batch response: {custom_id}")
+        responses[custom_id] = item
     run_id = config["run"]["id"]
     run_dir = resolve(config, config["output"]["directory"])
     logging_config = config.get("logging", {})
@@ -884,24 +951,22 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
         resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
         logging_config.get("level", "INFO"),
     )
-    rows = read_rows(
-        resolve(config, config["input"]["path"]),
-        config["input"]["format"],
-        config["input"]["id_column"],
-        config["input"]["text_column"],
-    )
+    rows = rows_for_source(config, config["input"])
     result_path = run_dir / "results.parquet"
     saved = pq.read_table(result_path).to_pylist() if result_path.exists() else []
-    complete = {(str(row["variant_id"]), str(row["input_row_id"])) for row in saved}
+    complete = {
+        (str(row["variant_id"]), str(row["input_row_id"]), int(row.get("source_position") or -1)) for row in saved
+    }
     for variant in config["variants"]:
         schema_path = variant.get("validation", {}).get("schema")
         schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
         for row in rows:
             row_id = str(row[config["input"]["id_column"]])
-            if (variant["id"], row_id) in complete:
+            if (variant["id"], *row_key(row, config)) in complete:
                 continue
             current_prompt = rendered_prompt(config, variant, row, schema)
-            raw, batch_error, observed = _batch_text(responses.get(f"{variant['id']}:{row_id}", {}))
+            custom_id = f"{variant['id']}:{row_id}:{row['_source_position']}"
+            raw, batch_error, observed = _batch_text(responses.get(custom_id, {}))
             parsed, errors = (
                 validate_response(raw or "", schema)
                 if raw is not None
@@ -917,12 +982,14 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
             saved.append(
                 {
                     "run_id": run_id,
+                    "dataset_id": config["run"].get("dataset_id", "default"),
                     "variant_id": variant["id"],
                     "input_row_id": row_id,
                     "source_position": row["_source_position"],
                     "input_text": str(row[config["input"]["text_column"]])
                     if config["output"].get("include_text")
                     else None,
+                    "gold_labels": serialise(row.get("_gold_labels")),
                     "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
                     "config_hash": hashlib.sha256(json.dumps(variant, sort_keys=True).encode()).hexdigest(),
                     "attempt_count": 1,
@@ -942,6 +1009,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
     write_results(run_dir, saved)
     manifest = {
         "run_id": run_id,
+        "dataset_id": config["run"].get("dataset_id", "default"),
         "input_rows": len(rows),
         "result_rows": len(saved),
         "model": config["model"],
@@ -1113,15 +1181,16 @@ def benchmark_api(config: dict[str, Any], requests: list[dict[str, Any]]) -> dic
             token_count += tokens
             errors += int(error is not None)
         elapsed = max(time.perf_counter() - started, 1e-9)
+        completed = len(requests) - errors
         measurements.append(
             {
                 "repeat": repeat + 1,
                 "requests": len(requests),
-                "completed": len(requests) - errors,
+                "completed": completed,
                 "errors": errors,
                 "tokens": token_count,
                 "wall_seconds": elapsed,
-                "requests_per_second": len(requests) / elapsed,
+                "requests_per_second": completed / elapsed,
                 "tokens_per_second": token_count / elapsed,
                 "gpu_before": before,
                 "gpu_after": gpu(),
@@ -1169,9 +1238,11 @@ def benchmark_run_batch(config: dict[str, Any], requests: list[dict[str, Any]], 
             for line in response_path.read_text(encoding="utf-8").splitlines():
                 if not line.strip():
                     continue
-                response_count += 1
                 item = json.loads(line)
-                errors += int(bool(item.get("error")))
+                if item.get("error"):
+                    errors += 1
+                    continue
+                response_count += 1
                 usage = (item.get("response") or {}).get("body", {}).get("usage") or {}
                 token_count += int(usage.get("completion_tokens", 0) or 0)
             command_error = None
@@ -1329,31 +1400,40 @@ def main() -> int:
     parse.add_argument("--output")
     parse.add_argument("--dataset", help="Dataset id when using a matrix configuration")
     args = parser.parse_args()
-    config = load_config(args.config, config_overrides(args))
+    config = load_config(args.config, config_overrides(args), check_files=False)
     if getattr(args, "dataset", None):
         config = select_dataset(config, args.dataset)
+    validate_config(config, check_files=True)
     if args.command == "validate":
         print(f"Valid configuration: {config['run']['id']}")
     elif args.command == "prepare":
+        require_single_input(config, "prepare")
         print(prepare(config))
     elif args.command == "prepare-matrix":
-        selected = args.datasets.split(",") if args.datasets else None
+        selected = [item.strip() for item in args.datasets.split(",") if item.strip()] if args.datasets else None
         print(json.dumps([str(path) for path in prepare_matrix(config, selected)], indent=2))
     elif args.command == "run-matrix":
-        selected = args.datasets.split(",") if args.datasets else None
+        selected = [item.strip() for item in args.datasets.split(",") if item.strip()] if args.datasets else None
         print(json.dumps(run_matrix(config, args.rows, selected), indent=2))
     elif args.command == "batch-command":
+        require_single_input(config, "batch-command")
         print(batch_command(config))
     elif args.command == "parse":
+        require_single_input(config, "parse")
         print(json.dumps(parse_batch(config, args.responses), indent=2))
     elif args.command == "self-test":
         self_test(config)
         print("Self-test passed")
     elif args.command == "benchmark":
-        approaches = args.approaches.split(",") if args.approaches else None
+        approaches = [item.strip() for item in args.approaches.split(",") if item.strip()] if args.approaches else None
         print(json.dumps(benchmark(config, approaches, args.rows), indent=2))
     else:
-        print(json.dumps(run(config, row_limit=getattr(args, "rows", None)), indent=2))
+        result = (
+            run_matrix(config, row_limit=getattr(args, "rows", None))
+            if "datasets" in config
+            else run(config, row_limit=getattr(args, "rows", None))
+        )
+        print(json.dumps(result, indent=2))
     return 0
 
 

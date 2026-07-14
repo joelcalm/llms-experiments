@@ -2,8 +2,11 @@ run:
   id: ministral_all_datasets
   seed: 123
 
-# One model process, five independent dataset lanes.  Each lane can be
-# overridden from the CLI without copying this file.
+# One model process, five independent dataset lanes. Each lane can be
+# overridden from the CLI without copying this file. The generic schemas and
+# candidates below are interface-smoke defaults; replace them with
+# dataset-specific label vocabularies before treating outputs as evaluation
+# scores.
 datasets:
   - id: mftc
     input:
