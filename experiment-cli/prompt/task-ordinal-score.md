@@ -1,1 +1,1 @@
-Read this text and return a generic ordinal score: {{text}}
+Return a generic ordinal score from 1 to 5.

@@ -1,6 +1,12 @@
 run:
   id: local_all_modes_smoke
   seed: 123
+  dataset_labels: [alpha, beta, gamma]
+  code_labels: {A: alpha, B: beta, C: gamma}
+  binary_question: Does this text express the smoke-test target?
+  prompt_parts:
+    theory: experiment-cli/prompt/theory-generic.md
+    definitions: experiment-cli/prompt/definitions-generic.md
 input:
   path: experiment-cli/data/smoke.parquet
   format: parquet
@@ -19,26 +25,26 @@ variants:
   - id: single_label_json
     request_mode: generate
     max_tokens: 16
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-single-label.json}
   - id: multi_label_json
     request_mode: generate
     max_tokens: 16
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-multi-label.json}
   - id: ordinal_score_json
     request_mode: generate
     max_tokens: 16
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-ordinal-score.json}
   - id: single_label_code_logits
     request_mode: candidate_logprobs
     candidates: [A, B, C]
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-single-label-code.md]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label-code.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
   - id: independent_yes_no_logits
     request_mode: candidate_logprobs
     candidates: ["yes", "no"]
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-yes-no.md]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-yes-no.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
 batch:
   mode: auto
   candidates: [1, 2, 4, 8, 16, 32, 64, 128]

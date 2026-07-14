@@ -20,27 +20,27 @@ already applied and issues that must be resolved before a full evaluation run.
   checks were added.
 - Matrix lane selection, matrix preparation, and overridden output log paths
   are isolated for parallel jobs.
+- Dataset-specific label/code vocabularies and MFT/SHVT theory fragments are
+  declared in YAML; the runner remains generic.
+- Large CSV inputs stream through bounded batches into append-only Parquet
+  parts, with a disk-backed resume index and final merge.
+- Static prompt parts are assembled before the final `input.md` fragment and
+  each variant records a reusable `prompt_group_id`.
+- External parsing emits bounded retry JSONL requests and consumes retry
+  responses, preserving attempt counts and final validation status.
+- Resume keys include effective model/input/prompt/config hashes and manifests
+  record source-file provenance metadata.
 
-## Open blockers before full evaluation
+## Remaining operational checks
 
-1. `experiments/ministral_all_datasets.yaml` is currently an interface smoke
-   configuration. Its `alpha/beta/gamma`, `A/B/C`, and `yes/no` choices do not
-   represent the MFTC, MFRC, ValueEval, or ProtoEthos label vocabularies. A
-   full run with this file is not a meaningful accuracy evaluation.
-2. The five-dataset matrix eagerly materialises the 2.55M-row ProtoEthos lanes
-   and all variant prompts. Artemisa needs streaming/chunked input and
-   append-only Parquet parts rather than whole-run in-memory lists and rewrites.
-3. Prompt assets place `{{text}}` before the JSON schema in some variants and
-   no prompt-family scheduler exists yet. Static prompt fragments should be
-   grouped before row text, then scheduled by prefix/mode/schema.
-4. External `parse` validates remote responses once; configured correction
-   retries and complete remote usage/latency metadata are not yet reproduced.
-5. Resume checks source position but does not fail when model, prompt assets,
-   source data, or generation configuration changes in an existing output.
-6. The current ValueEval materialised source contains 5,393 rows, while the
-   raw train/validation/test files contain 8,865 rows in total.
-7. The Ministral YAML uses host-specific absolute data paths. Artemisa needs
-   portable paths or per-worker path overrides.
+1. The real Ministral GPU acceptance run still needs to be launched on
+   Artemisa; this environment has no usable NVIDIA driver.
+2. ValueEval and ProtoEthos label strings are intentionally preserved exactly
+   as provided by their source files. Downstream scoring should use the same
+   canonicalisation when comparing predictions and gold labels.
+3. `source_provenance.metadata_hash` hashes file metadata (size and mtime),
+   not the full bytes; enable an external content checksum when the data
+   publication requires byte-level provenance.
 
 Verification after the fixes:
 
@@ -48,5 +48,5 @@ Verification after the fixes:
 UV_CACHE_DIR=.uv-cache uv run ruff check experiment-cli/experiment_cli.py
 UV_CACHE_DIR=.uv-cache uv run ruff format --check experiment-cli/experiment_cli.py
 UV_CACHE_DIR=.uv-cache uv run python experiment-cli/experiment_cli.py self-test \
-  --config experiments/local_all_modes_smoke.yaml --backend fake
+  --config experiments/local_all_modes_smoke.yaml
 ```

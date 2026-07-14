@@ -1,3 +1,3 @@
-Read this text and choose exactly one answer from: {{candidates}}
+{{question}}
 
-Text: {{text}}
+Choose exactly one answer from: {{candidates}}

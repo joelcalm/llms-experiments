@@ -1,0 +1,2 @@
+Configured MFT categories:
+{{labels}}

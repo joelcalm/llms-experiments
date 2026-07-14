@@ -1,3 +1,1 @@
-Read this text and choose exactly one configured code from: {{candidates}}
-
-Text: {{text}}
+Choose exactly one configured code from: {{candidate_mapping}}

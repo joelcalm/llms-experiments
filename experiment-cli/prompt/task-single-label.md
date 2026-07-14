@@ -1,1 +1,1 @@
-Read this text and select one generic category: {{text}}
+Select exactly one category from: {{labels}}

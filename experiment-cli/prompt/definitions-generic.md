@@ -1,0 +1,2 @@
+Configured categories:
+{{labels}}

@@ -3,52 +3,74 @@ run:
   seed: 123
 
 # One model process, five independent dataset lanes. Each lane can be
-# overridden from the CLI without copying this file. The generic schemas and
-# candidates below are interface-smoke defaults; replace them with
-# dataset-specific label vocabularies before treating outputs as evaluation
-# scores.
+# overridden from the CLI without copying this file. Label vocabularies and
+# reusable theory/definition fragments are data configuration, not runner
+# logic.
 datasets:
   - id: mftc
     input:
-      path: /home/alono/TFM/data/MFTC/MFTC_V4_text.json
+      path: ${TFM_ROOT}/data/MFTC/MFTC_V4_text.json
       format: nested_json
       id_column: tweet_id
       text_column: tweet_text
       records_key: Tweets
       labels_column: annotations
       label_value_key: annotation
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, nh, nm, non-moral, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: nh, J: nm, K: non-moral, L: purity, M: subversion}
+      binary_question: Does this text express care?
+      prompt_parts: {theory: experiment-cli/prompt/theory-mft.md, definitions: experiment-cli/prompt/definitions-mft.md}
   - id: mfrc
     input:
-      path: /home/alono/TFM/results/llm_prompting_strategy_extended_mfrc_a100_36h_v1_20260610_0142/items/mfrc.jsonl
+      path: ${TFM_ROOT}/results/llm_prompting_strategy_extended_mfrc_a100_36h_v1_20260610_0142/items/mfrc.jsonl
       format: jsonl
       id_column: item_id
       text_column: text
       labels_column: gold_labels
+      labels: [authority, care, fairness, loyalty, sanctity]
+      code_labels: {A: authority, B: care, C: fairness, D: loyalty, E: sanctity}
+      binary_question: Does this text express care?
+      prompt_parts: {theory: experiment-cli/prompt/theory-mft.md, definitions: experiment-cli/prompt/definitions-mft.md}
   - id: valueeval
     input:
-      path: /home/alono/TFM/results/llm_prompting_strategy_extended_a100_36h_v1_20260610_0120/items/valueeval.jsonl
-      format: jsonl
-      id_column: item_id
-      text_column: text
-      labels_column: gold_labels
+      path: ${TFM_ROOT}/src/legacy/instantiationsv2/ValueEval/arguments-training.tsv
+      labels_path: ${TFM_ROOT}/src/legacy/instantiationsv2/ValueEval/labels-training.tsv
+      format: paired_tsv
+      id_column: Argument ID
+      text_column: Premise
+      additional_pairs:
+        - {path: "${TFM_ROOT}/src/legacy/instantiationsv2/ValueEval/arguments-validation.tsv", labels_path: "${TFM_ROOT}/src/legacy/instantiationsv2/ValueEval/labels-validation.tsv"}
+        - {path: "${TFM_ROOT}/src/legacy/instantiationsv2/ValueEval/arguments-test.tsv", labels_path: "${TFM_ROOT}/data/valueeval_raw/labels-test.tsv"}
+      labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
+      code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
+      binary_question: Does this text express achievement?
+      prompt_parts: {theory: experiment-cli/prompt/theory-shvt.md, definitions: experiment-cli/prompt/definitions-shvt.md}
   - id: protoethos_mft
     input:
-      path: /home/alono/TFM/protoethos/EIT/deliverable/dataset/dataset_3m.csv
+      path: ${TFM_ROOT}/protoethos/EIT/deliverable/dataset/dataset_3m.csv
       format: csv
       delimiter: ;
       id_column: id
       text_column: sentence
       labels_column: value_id
       where: {theory_id: mft}
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
+      binary_question: Does this text express authority?
+      prompt_parts: {theory: experiment-cli/prompt/theory-mft.md, definitions: experiment-cli/prompt/definitions-mft.md}
   - id: protoethos_shvt
     input:
-      path: /home/alono/TFM/protoethos/EIT/deliverable/dataset/dataset_3m.csv
+      path: ${TFM_ROOT}/protoethos/EIT/deliverable/dataset/dataset_3m.csv
       format: csv
       delimiter: ;
       id_column: id
       text_column: sentence
       labels_column: value_id
       where: {theory_id: shvt}
+      labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
+      code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
+      binary_question: Does this text express achievement?
+      prompt_parts: {theory: experiment-cli/prompt/theory-shvt.md, definitions: experiment-cli/prompt/definitions-shvt.md}
 
 model:
   name: mistralai/Ministral-3-3B-Instruct-2512
@@ -64,26 +86,26 @@ variants:
   - id: single_label_json
     request_mode: generate
     max_tokens: 16
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md]
-    validation: {schema: experiment-cli/prompt/schema-single-label.json}
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+    validation: {schema: experiment-cli/prompt/schema-single-label.json, enum_from: dataset_labels}
   - id: multi_label_json
     request_mode: generate
     max_tokens: 32
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md]
-    validation: {schema: experiment-cli/prompt/schema-multi-label.json}
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+    validation: {schema: experiment-cli/prompt/schema-multi-label.json, enum_from: dataset_labels}
   - id: ordinal_score_json
     request_mode: generate
     max_tokens: 16
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-ordinal-score.json}
   - id: single_label_code_logits
     request_mode: candidate_logprobs
-    candidates: [A, B, C]
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-single-label-code.md]
+    candidates_from: code_labels
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label-code.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
   - id: independent_yes_no_logits
     request_mode: candidate_logprobs
     candidates: ["yes", "no"]
-    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-yes-no.md]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-yes-no.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
 
 batch:
   mode: auto
@@ -91,6 +113,10 @@ batch:
   warmup_rows: 32
   min_size: 1
   on_failure: halve
+
+streaming:
+  enabled: true
+  output_chunk_rows: 4096
 
 validation:
   enabled: true

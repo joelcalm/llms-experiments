@@ -9,7 +9,7 @@ experiment-cli/
   experiment_cli.py        # the only Python implementation file
   ../experiments/          # YAML experiment configurations
   data/                    # input fixtures
-  prompt/                  # Markdown prompt fragments and JSON schemas
+  prompt/                  # reusable Markdown parts and JSON schemas
 ```
 
 Each support directory is one level deep. Generated `results/` are ignored by Git.
@@ -123,7 +123,7 @@ uv run python experiment-cli/experiment_cli.py parse \
   --responses results/local_all_modes_smoke/responses.jsonl
 ```
 
-The parser checks response status and JSON schemas, extracts top token log-probabilities for the two scoring variants, and writes the same Parquet contract and manifest as `run`. It keeps invalid or missing remote results as explicit failures, which makes a follow-up batch safe to prepare instead of silently losing rows.
+The parser checks response status and JSON schemas, extracts top token log-probabilities for the two scoring variants, and writes the same Parquet contract and manifest as `run`. Invalid structured responses produce `retry_requests.jsonl` when retries are enabled; submit that file with `vllm run-batch` and parse the retry response again. Final failures remain explicit rows rather than being silently dropped.
 
 For the five-dataset matrix, prepare independent request files so Artemisa
 workers can run them in parallel:
@@ -150,6 +150,7 @@ For `output.directory: results/my_run`, the runner writes:
 
 ```text
 results/my_run/
+  parts/variant=<variant_id>/part-*.parquet
   results.parquet
   single_label_json.parquet
   multi_label_json.parquet
@@ -207,9 +208,25 @@ Copy `experiments/local_all_modes_smoke.yaml`, then change only data:
 When a source provides labels, result rows include the serialised
 `gold_labels` field alongside the prediction fields.
 
-Prompt substitutions are intentionally limited to `{{text}}`, `{{row_id}}`,
-`{{dataset_id}}`, `{{candidates}}`, `{{output_schema}}`, `{{raw_response}}`,
-and `{{validation_errors}}`.
+Prompt substitutions are intentionally generic: `{{text}}`, `{{row_id}}`,
+`{{dataset_id}}`, `{{labels}}`, `{{candidate_mapping}}`, `{{candidates}}`,
+`{{question}}`, `{{theory}}`, `{{definitions}}`, `{{output_schema}}`,
+`{{raw_response}}`, and `{{validation_errors}}`.
+
+Prompt parts are ordinary Markdown files. A dataset can declare reusable context
+in `input.prompt_parts`, for example:
+
+```yaml
+prompt_parts:
+  theory: experiment-cli/prompt/theory-mft.md
+  definitions: experiment-cli/prompt/definitions-mft.md
+```
+
+The `context.md` fragment ensembles those files, and each variant then adds its
+task, output contract, and final `input.md` fragment. This keeps theory and
+definitions in one place while allowing the same parts to be reused across JSON,
+ordinal, code-logit, and yes/no variants. Static parts are rendered before the
+row text so equal theory/schema prefixes can be cached by vLLM.
 
 ## Five-dataset Ministral matrix
 
@@ -243,6 +260,7 @@ uv run python experiment-cli/experiment_cli.py run-matrix \
 The command loads Ministral once, tunes each variant for each dataset, and
 writes `results/ministral_all_datasets/dataset=<id>/`. The aggregate
 `matrix_manifest.json` records every child manifest. Omit `--rows` for the full
-datasets; ProtoEthos then reads the complete 3M-row source and should be run as
-an Artemisa job with sufficient host RAM and wall time. A resumed invocation
-does not duplicate completed `(variant_id, input_row_id)` rows.
+datasets; ProtoEthos then streams the complete 3M-row source in bounded batches.
+Each variant is appended to `parts/variant=<id>/`; a SQLite resume index prevents
+duplicate `(variant_id, input_row_id, source_position)` rows and the final
+Parquet files are merged without retaining the dataset in RAM.
