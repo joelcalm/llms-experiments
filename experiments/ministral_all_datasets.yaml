@@ -1,0 +1,108 @@
+run:
+  id: ministral_all_datasets
+  seed: 123
+
+# One model process, five independent dataset lanes.  Each lane can be
+# overridden from the CLI without copying this file.
+datasets:
+  - id: mftc
+    input:
+      path: /home/alono/TFM/data/MFTC/MFTC_V4_text.json
+      format: nested_json
+      id_column: tweet_id
+      text_column: tweet_text
+      records_key: Tweets
+      labels_column: annotations
+      label_value_key: annotation
+  - id: mfrc
+    input:
+      path: /home/alono/TFM/results/llm_prompting_strategy_extended_mfrc_a100_36h_v1_20260610_0142/items/mfrc.jsonl
+      format: jsonl
+      id_column: item_id
+      text_column: text
+      labels_column: gold_labels
+  - id: valueeval
+    input:
+      path: /home/alono/TFM/results/llm_prompting_strategy_extended_a100_36h_v1_20260610_0120/items/valueeval.jsonl
+      format: jsonl
+      id_column: item_id
+      text_column: text
+      labels_column: gold_labels
+  - id: protoethos_mft
+    input:
+      path: /home/alono/TFM/protoethos/EIT/deliverable/dataset/dataset_3m.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: mft}
+  - id: protoethos_shvt
+    input:
+      path: /home/alono/TFM/protoethos/EIT/deliverable/dataset/dataset_3m.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: shvt}
+
+model:
+  name: mistralai/Ministral-3-3B-Instruct-2512
+  backend: local_vllm
+  gpu_memory_utilization: 0.90
+  max_model_len: 2048
+  max_num_seqs: 64
+  enable_prefix_caching: true
+  language_model_only: true
+  synchronize_cuda: false
+
+variants:
+  - id: single_label_json
+    request_mode: generate
+    max_tokens: 16
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md]
+    validation: {schema: experiment-cli/prompt/schema-single-label.json}
+  - id: multi_label_json
+    request_mode: generate
+    max_tokens: 32
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md]
+    validation: {schema: experiment-cli/prompt/schema-multi-label.json}
+  - id: ordinal_score_json
+    request_mode: generate
+    max_tokens: 16
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md]
+    validation: {schema: experiment-cli/prompt/schema-ordinal-score.json}
+  - id: single_label_code_logits
+    request_mode: candidate_logprobs
+    candidates: [A, B, C]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-single-label-code.md]
+  - id: independent_yes_no_logits
+    request_mode: candidate_logprobs
+    candidates: [yes, no]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-yes-no.md]
+
+batch:
+  mode: auto
+  candidates: [1, 2, 4, 8, 16, 32, 64]
+  warmup_rows: 32
+  min_size: 1
+  on_failure: halve
+
+validation:
+  enabled: true
+  retry:
+    enabled: true
+    max_attempts: 2
+    correction_prompt: experiment-cli/prompt/retry-structured-output.md
+
+output:
+  directory: results/ministral_all_datasets
+  format: parquet
+  include_text: false
+  include_raw_response: true
+
+logging:
+  level: INFO
+  file: results/ministral_all_datasets/logs/run.log
+  events: results/ministral_all_datasets/logs/events.jsonl

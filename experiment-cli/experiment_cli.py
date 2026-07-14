@@ -12,6 +12,7 @@ import csv
 import hashlib
 import json
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -28,7 +29,7 @@ import pyarrow.parquet as pq
 import yaml
 
 MODES = {"generate", "candidate_logprobs"}
-TOKEN = re.compile(r"{{\s*(text|row_id|output_schema|raw_response|validation_errors)\s*}}")
+TOKEN = re.compile(r"{{\s*(text|row_id|dataset_id|output_schema|raw_response|validation_errors|candidates)\s*}}")
 
 
 def resolve(config: dict[str, Any], value: str | Path) -> Path:
@@ -36,29 +37,65 @@ def resolve(config: dict[str, Any], value: str | Path) -> Path:
     return path if path.is_absolute() else Path(config["_root"]) / path
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
+def _set_path(config: dict[str, Any], dotted: str, value: Any) -> None:
+    parts = dotted.split(".")
+    current: Any = config
+    for part in parts[:-1]:
+        if isinstance(current, list):
+            current = current[int(part)]
+        else:
+            if part not in current or current[part] is None:
+                current[part] = {}
+            current = current[part]
+    last = parts[-1]
+    if isinstance(current, list):
+        current[int(last)] = value
+    else:
+        current[last] = value
+
+
+def load_config(path: str | Path, overrides: list[str] | None = None) -> dict[str, Any]:
     path = Path(path).resolve()
     config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(config, dict):
         raise ValueError("Experiment configuration must be a YAML mapping")
     config = deepcopy(config)
-    config["_root"] = str(path.parent.parent)
+    config["_root"] = str(path.parent.parent if path.parent.name in {"config", "experiments"} else path.parent)
+    for item in overrides or []:
+        if "=" not in item:
+            raise ValueError(f"Override must use KEY=VALUE syntax: {item}")
+        key, raw_value = item.split("=", 1)
+        if not key:
+            raise ValueError(f"Override key is empty: {item}")
+        _set_path(config, key, yaml.safe_load(raw_value))
     validate_config(config, check_files=True)
     return config
 
 
 def validate_config(config: dict[str, Any], *, check_files: bool = False) -> None:
-    for key in ("run", "input", "model", "variants", "output"):
+    for key in ("run", "model", "variants", "output"):
         if key not in config:
             raise ValueError(f"Missing required top-level key `{key}`")
     if not config["run"].get("id"):
         raise ValueError("run.id is required")
-    source = config["input"]
-    for key in ("path", "format", "id_column", "text_column"):
-        if not source.get(key):
-            raise ValueError(f"input.{key} is required")
-    if source["format"] not in {"csv", "jsonl", "parquet"}:
-        raise ValueError("input.format must be csv, jsonl, or parquet")
+    if "datasets" in config:
+        if not isinstance(config["datasets"], list) or not config["datasets"]:
+            raise ValueError("datasets must be a non-empty list")
+        sources = []
+        dataset_ids: set[str] = set()
+        for dataset in config["datasets"]:
+            identifier = str(dataset.get("id", ""))
+            if not identifier or identifier in dataset_ids:
+                raise ValueError("Every dataset needs a unique id")
+            dataset_ids.add(identifier)
+            source = dataset.get("input", dataset)
+            _validate_source(source, f"datasets[{identifier}].input")
+            sources.append(source)
+    else:
+        if "input" not in config:
+            raise ValueError("Missing required top-level key `input` (or `datasets`)")
+        _validate_source(config["input"], "input")
+        sources = [config["input"]]
     if config["model"].get("backend") not in {"local_vllm", "fake"}:
         raise ValueError("model.backend must be local_vllm or fake")
     seen: set[str] = set()
@@ -83,7 +120,11 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
     if int(benchmark_config.get("rows", 1)) < 1:
         raise ValueError("benchmark.rows must be positive")
     if check_files:
-        paths = [config["input"]["path"]]
+        paths = []
+        for source in sources:
+            paths.append(source["path"])
+            if source.get("format") == "paired_tsv":
+                paths.append(source["labels_path"])
         for variant in config["variants"]:
             paths.extend(variant["prompts"])
             if schema := variant.get("validation", {}).get("schema"):
@@ -96,19 +137,141 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
                 raise ValueError(f"Configured file does not exist: {item}")
 
 
-def read_rows(path: Path, data_format: str, id_column: str, text_column: str) -> list[dict[str, Any]]:
+def _validate_source(source: dict[str, Any], name: str) -> None:
+    for key in ("path", "format", "id_column", "text_column"):
+        if not source.get(key):
+            raise ValueError(f"{name}.{key} is required")
+    if source["format"] not in {"csv", "tsv", "jsonl", "parquet", "nested_json", "paired_tsv"}:
+        raise ValueError(f"{name}.format is unsupported")
+    if source["format"] == "paired_tsv" and not source.get("labels_path"):
+        raise ValueError(f"{name}.labels_path is required for paired_tsv")
+
+
+def _split_labels(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+            if isinstance(decoded, list):
+                return [str(item) for item in decoded if str(item)]
+        except json.JSONDecodeError:
+            pass
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [str(value)]
+
+
+def read_rows(
+    path: Path,
+    data_format: str,
+    id_column: str,
+    text_column: str,
+    source: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    source = source or {
+        "path": str(path),
+        "format": data_format,
+        "id_column": id_column,
+        "text_column": text_column,
+    }
     if data_format == "parquet":
         rows = pq.read_table(path).to_pylist()
     elif data_format == "jsonl":
         rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    else:
+    elif data_format in {"csv", "tsv"}:
+        delimiter = source.get("delimiter", "\t" if data_format == "tsv" else ",")
         with path.open(encoding="utf-8", newline="") as handle:
-            rows = [dict(row) for row in csv.DictReader(handle)]
+            rows = []
+            where = source.get("where", {})
+            limit = int(source["limit"]) if source.get("limit") else None
+            for row in csv.DictReader(handle, delimiter=delimiter):
+                if where and any(str(row.get(key)) != str(value) for key, value in where.items()):
+                    continue
+                rows.append(dict(row))
+                if limit and len(rows) >= limit:
+                    break
+    elif data_format == "nested_json":
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        rows = []
+        records_key = source.get("records_key", "Tweets")
+        labels_key = source.get("labels_column", "annotations")
+        label_value_key = source.get("label_value_key", "annotation")
+        for parent in payload:
+            for record in parent.get(records_key, []):
+                annotations = record.get(labels_key, [])
+                labels = []
+                for annotation in annotations:
+                    value = annotation.get(label_value_key) if isinstance(annotation, dict) else annotation
+                    labels.extend(_split_labels(value))
+                rows.append({**record, "_gold_labels": sorted(set(labels))})
+    elif data_format == "paired_tsv":
+        with path.open(encoding="utf-8", newline="") as handle:
+            arguments = {row[id_column]: dict(row) for row in csv.DictReader(handle, delimiter="\t")}
+        label_path = Path(source["labels_path"])
+        with label_path.open(encoding="utf-8", newline="") as handle:
+            labels = {row[id_column]: dict(row) for row in csv.DictReader(handle, delimiter="\t")}
+        columns = source.get("label_columns")
+        rows = []
+        for row_id, argument in arguments.items():
+            if row_id not in labels:
+                continue
+            label_row = labels[row_id]
+            selected = columns or [key for key in label_row if key != id_column]
+            rows.append(
+                {
+                    id_column: row_id,
+                    text_column: argument.get(text_column, ""),
+                    "_gold_labels": [
+                        key for key in selected if str(label_row.get(key, "0")).strip() in {"1", "1.0", "true", "True"}
+                    ],
+                }
+            )
+    else:
+        raise ValueError(f"Unsupported input format: {data_format}")
+    where = source.get("where", {})
+    if where and data_format not in {"csv", "tsv"}:
+        rows = [row for row in rows if all(str(row.get(key)) == str(value) for key, value in where.items())]
     for position, row in enumerate(rows):
         if id_column not in row or text_column not in row:
             raise ValueError(f"Input row {position} lacks `{id_column}` or `{text_column}`")
+        if "_gold_labels" not in row and source.get("labels_column"):
+            row["_gold_labels"] = _split_labels(row.get(source["labels_column"]))
         row["_source_position"] = position
     return rows
+
+
+def dataset_entries(config: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    if "datasets" not in config:
+        return [(str(config.get("run", {}).get("dataset_id", "default")), config["input"])]
+    return [(str(item["id"]), item.get("input", item)) for item in config["datasets"]]
+
+
+def select_dataset(config: dict[str, Any], dataset_id: str) -> dict[str, Any]:
+    for identifier, source in dataset_entries(config):
+        if identifier == dataset_id:
+            selected = deepcopy(config)
+            selected.pop("datasets", None)
+            selected["input"] = source
+            selected["run"] = {**config["run"], "id": f"{config['run']['id']}__{identifier}", "dataset_id": identifier}
+            base_output = resolve(config, config["output"]["directory"])
+            selected["output"] = {**config["output"], "directory": str(base_output / f"dataset={identifier}")}
+            return selected
+    raise ValueError(f"Unknown dataset id: {dataset_id}")
+
+
+def rows_for_source(config: dict[str, Any], source: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+    rows = read_rows(
+        resolve(config, source["path"]),
+        source["format"],
+        source["id_column"],
+        source["text_column"],
+        source,
+    )
+    configured_limit = source.get("limit")
+    effective_limit = limit if limit is not None else configured_limit
+    return rows[: int(effective_limit)] if effective_limit else rows
 
 
 def render(template: str, values: dict[str, Any]) -> str:
@@ -258,6 +421,15 @@ class VLLMBackend:
     def __init__(self, model: dict[str, Any]) -> None:
         if not gpu().get("available"):
             raise RuntimeError("GPU preflight failed: nvidia-smi cannot communicate with an NVIDIA driver.")
+        # vLLM V1 starts an EngineCore process.  CUDA must never be inherited
+        # through fork after the telemetry preflight has touched torch.
+        import multiprocessing as mp
+
+        try:
+            mp.set_start_method("spawn", force=True)
+        except RuntimeError:
+            pass
+        os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
         try:
             from vllm import LLM, SamplingParams
         except ImportError as exc:
@@ -370,7 +542,7 @@ def serialise(value: Any) -> str | None:
     return None if value is None else json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def run(config: dict[str, Any], backend: Any | None = None) -> dict[str, Any]:
+def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | None = None) -> dict[str, Any]:
     run_id = config["run"]["id"]
     run_dir = resolve(config, config["output"]["directory"])
     logging_config = config.get("logging", {})
@@ -379,12 +551,7 @@ def run(config: dict[str, Any], backend: Any | None = None) -> dict[str, Any]:
         resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
         logging_config.get("level", "INFO"),
     )
-    rows = read_rows(
-        resolve(config, config["input"]["path"]),
-        config["input"]["format"],
-        config["input"]["id_column"],
-        config["input"]["text_column"],
-    )
+    rows = rows_for_source(config, config["input"], row_limit)
     result_path = run_dir / "results.parquet"
     existing = pq.read_table(result_path).to_pylist() if result_path.exists() else []
     complete = {(str(row["variant_id"]), str(row["input_row_id"])) for row in existing}
@@ -412,6 +579,8 @@ def run(config: dict[str, Any], backend: Any | None = None) -> dict[str, Any]:
             values = lambda row: {
                 "text": row[config["input"]["text_column"]],
                 "row_id": row[config["input"]["id_column"]],
+                "dataset_id": config["run"].get("dataset_id", "default"),
+                "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
                 "output_schema": json.dumps(schema or {}, sort_keys=True),
             }
             prompts = [prompt(config, variant["prompts"], values(row)) for row in pending]
@@ -458,6 +627,7 @@ def run(config: dict[str, Any], backend: Any | None = None) -> dict[str, Any]:
                     existing.append(
                         {
                             "run_id": run_id,
+                            "dataset_id": config["run"].get("dataset_id", "default"),
                             "variant_id": variant["id"],
                             "input_row_id": str(row[config["input"]["id_column"]]),
                             "source_position": row["_source_position"],
@@ -498,6 +668,7 @@ def run(config: dict[str, Any], backend: Any | None = None) -> dict[str, Any]:
     (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(effective, sort_keys=False), encoding="utf-8")
     manifest = {
         "run_id": run_id,
+        "dataset_id": config["run"].get("dataset_id", "default"),
         "input_rows": len(rows),
         "result_rows": len(existing),
         "model": config["model"],
@@ -511,20 +682,109 @@ def run(config: dict[str, Any], backend: Any | None = None) -> dict[str, Any]:
     return manifest
 
 
+def run_matrix(
+    config: dict[str, Any], row_limit: int | None = None, selected: list[str] | None = None
+) -> dict[str, Any]:
+    """Run every configured dataset with one shared backend/model process."""
+    if "datasets" not in config:
+        return {"datasets": [run(config, row_limit=row_limit)]}
+    base_output = resolve(config, config["output"]["directory"])
+    entries = dataset_entries(config)
+    if selected:
+        wanted = set(selected)
+        entries = [(identifier, source) for identifier, source in entries if identifier in wanted]
+        missing = wanted - {identifier for identifier, _ in entries}
+        if missing:
+            raise ValueError(f"Unknown dataset id(s): {', '.join(sorted(missing))}")
+    shared = FakeBackend() if config["model"].get("backend") == "fake" else VLLMBackend(config["model"])
+    manifests: list[dict[str, Any]] = []
+    try:
+        for dataset_id, source in entries:
+            dataset_config = deepcopy(config)
+            dataset_config.pop("datasets", None)
+            dataset_config["input"] = source
+            dataset_config["run"] = {
+                **config["run"],
+                "id": f"{config['run']['id']}__{dataset_id}",
+                "dataset_id": dataset_id,
+            }
+            dataset_config["output"] = {
+                **config["output"],
+                "directory": str(base_output / f"dataset={dataset_id}"),
+            }
+            logging_config = dict(config.get("logging", {}))
+            if logging_config.get("file"):
+                logging_config["file"] = str(resolve(config, logging_config["file"]).with_name(f"{dataset_id}.log"))
+            if logging_config.get("events"):
+                logging_config["events"] = str(
+                    resolve(config, logging_config["events"]).with_name(f"{dataset_id}.events.jsonl")
+                )
+            dataset_config["logging"] = logging_config
+            manifests.append(run(dataset_config, shared, row_limit=row_limit))
+    finally:
+        shared.close()
+    summary = {
+        "run_id": config["run"]["id"],
+        "model": config["model"],
+        "datasets": manifests,
+        "result_rows": sum(int(item.get("result_rows", 0)) for item in manifests),
+    }
+    base_output.mkdir(parents=True, exist_ok=True)
+    (base_output / "matrix_manifest.json").write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+    return summary
+
+
+def config_overrides(args: argparse.Namespace) -> list[str]:
+    overrides = list(args.overrides or [])
+    shortcuts = {
+        "run_id": "run.id",
+        "model": "model.name",
+        "backend": "model.backend",
+        "output": "output.directory",
+    }
+    for argument, key in shortcuts.items():
+        value = getattr(args, argument, None)
+        if value is not None:
+            overrides.append(f"{key}={value}")
+    return overrides
+
+
 def prepare(config: dict[str, Any]) -> Path:
     run_dir = resolve(config, config["output"]["directory"])
-    rows = read_rows(
-        resolve(config, config["input"]["path"]),
-        config["input"]["format"],
-        config["input"]["id_column"],
-        config["input"]["text_column"],
-    )
+    rows = rows_for_source(config, config["input"])
     path = run_dir / "requests.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for request in build_requests(config, rows):
             handle.write(json.dumps(request, ensure_ascii=False) + "\n")
     return path
+
+
+def prepare_matrix(config: dict[str, Any], selected: list[str] | None = None) -> list[Path]:
+    """Prepare one independent vLLM JSONL request file per selected dataset."""
+    if "datasets" not in config:
+        return [prepare(config)]
+    entries = dataset_entries(config)
+    if selected:
+        wanted = set(selected)
+        entries = [(identifier, source) for identifier, source in entries if identifier in wanted]
+        missing = wanted - {identifier for identifier, _ in entries}
+        if missing:
+            raise ValueError(f"Unknown dataset id(s): {', '.join(sorted(missing))}")
+    base_output = resolve(config, config["output"]["directory"])
+    paths: list[Path] = []
+    for dataset_id, source in entries:
+        dataset_config = deepcopy(config)
+        dataset_config.pop("datasets", None)
+        dataset_config["input"] = source
+        dataset_config["run"] = {
+            **config["run"],
+            "id": f"{config['run']['id']}__{dataset_id}",
+            "dataset_id": dataset_id,
+        }
+        dataset_config["output"] = {**config["output"], "directory": str(base_output / f"dataset={dataset_id}")}
+        paths.append(prepare(dataset_config))
+    return paths
 
 
 def variant_schema(config: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any] | None:
@@ -540,6 +800,8 @@ def request_for_row(
     values = {
         "text": row[config["input"]["text_column"]],
         "row_id": row[config["input"]["id_column"]],
+        "dataset_id": config["run"].get("dataset_id", "default"),
+        "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
         "output_schema": json.dumps(schema or {}, sort_keys=True),
     }
     body: dict[str, Any] = {
@@ -738,12 +1000,9 @@ def response_from_api(completion: Any, variant: dict[str, Any]) -> Response:
 
 
 def benchmark_rows(config: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
-    rows = read_rows(
-        resolve(config, config["input"]["path"]),
-        config["input"]["format"],
-        config["input"]["id_column"],
-        config["input"]["text_column"],
-    )
+    if "datasets" in config:
+        raise ValueError("benchmark currently accepts one input; benchmark each dataset separately")
+    rows = rows_for_source(config, config["input"], limit)
     requested = limit if limit is not None else config.get("benchmark", {}).get("rows", len(rows))
     requested = int(requested)
     if requested < 1:
@@ -1027,11 +1286,27 @@ def self_test(config: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("validate", "run", "prepare", "batch-command", "self-test"):
+    for name in ("validate", "run", "run-matrix", "prepare", "prepare-matrix", "batch-command", "self-test"):
         command = commands.add_parser(name)
         command.add_argument("--config", required=True)
+        command.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+        command.add_argument("--run-id")
+        command.add_argument("--model")
+        command.add_argument("--backend", choices=["local_vllm", "fake"])
+        command.add_argument("--output")
+        if name == "batch-command":
+            command.add_argument("--dataset", help="Dataset id when using a matrix configuration")
+        if name in {"run", "run-matrix"}:
+            command.add_argument("--rows", type=int, default=None, help="Optional row limit")
+        if name in {"run-matrix", "prepare-matrix"}:
+            command.add_argument("--datasets", help="Comma-separated dataset ids to run (default: all)")
     benchmark_parser = commands.add_parser("benchmark")
     benchmark_parser.add_argument("--config", required=True)
+    benchmark_parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+    benchmark_parser.add_argument("--run-id")
+    benchmark_parser.add_argument("--model")
+    benchmark_parser.add_argument("--backend", choices=["local_vllm", "fake"])
+    benchmark_parser.add_argument("--output")
     benchmark_parser.add_argument(
         "--approaches",
         default=None,
@@ -1041,12 +1316,26 @@ def main() -> int:
     parse = commands.add_parser("parse")
     parse.add_argument("--config", required=True)
     parse.add_argument("--responses", required=True)
+    parse.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+    parse.add_argument("--run-id")
+    parse.add_argument("--model")
+    parse.add_argument("--backend", choices=["local_vllm", "fake"])
+    parse.add_argument("--output")
+    parse.add_argument("--dataset", help="Dataset id when using a matrix configuration")
     args = parser.parse_args()
-    config = load_config(args.config)
+    config = load_config(args.config, config_overrides(args))
+    if getattr(args, "dataset", None):
+        config = select_dataset(config, args.dataset)
     if args.command == "validate":
         print(f"Valid configuration: {config['run']['id']}")
     elif args.command == "prepare":
         print(prepare(config))
+    elif args.command == "prepare-matrix":
+        selected = args.datasets.split(",") if args.datasets else None
+        print(json.dumps([str(path) for path in prepare_matrix(config, selected)], indent=2))
+    elif args.command == "run-matrix":
+        selected = args.datasets.split(",") if args.datasets else None
+        print(json.dumps(run_matrix(config, args.rows, selected), indent=2))
     elif args.command == "batch-command":
         print(batch_command(config))
     elif args.command == "parse":
@@ -1058,7 +1347,7 @@ def main() -> int:
         approaches = args.approaches.split(",") if args.approaches else None
         print(json.dumps(benchmark(config, approaches, args.rows), indent=2))
     else:
-        print(json.dumps(run(config), indent=2))
+        print(json.dumps(run(config, row_limit=getattr(args, "rows", None)), indent=2))
     return 0
 
 
