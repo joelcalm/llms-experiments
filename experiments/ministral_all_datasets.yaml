@@ -79,7 +79,7 @@ variants:
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-single-label-code.md]
   - id: independent_yes_no_logits
     request_mode: candidate_logprobs
-    candidates: [yes, no]
+    candidates: ["yes", "no"]
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/task-yes-no.md]
 
 batch:

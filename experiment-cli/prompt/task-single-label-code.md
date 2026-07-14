@@ -1,1 +1,3 @@
-Read this text and choose one configured code: {{text}}
+Read this text and choose exactly one configured code from: {{candidates}}
+
+Text: {{text}}

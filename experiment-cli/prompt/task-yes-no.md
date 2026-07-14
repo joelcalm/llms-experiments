@@ -1,1 +1,3 @@
-Read this text and decide the configured binary question: {{text}}
+Read this text and choose exactly one answer from: {{candidates}}
+
+Text: {{text}}
