@@ -33,8 +33,8 @@ already applied and issues that must be resolved before a full evaluation run.
 
 ## Remaining operational checks
 
-1. The real Ministral GPU acceptance run still needs to be launched on
-   Artemisa; this environment has no usable NVIDIA driver.
+1. The real Ministral GPU acceptance run requires an environment with an
+   accessible NVIDIA device and compatible driver.
 2. ValueEval and ProtoEthos label strings are intentionally preserved exactly
    as provided by their source files. Downstream scoring should use the same
    canonicalisation when comparing predictions and gold labels.

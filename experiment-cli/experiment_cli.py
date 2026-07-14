@@ -65,8 +65,8 @@ UNRESOLVED_TOKEN = re.compile(r"{{\s*[^{}]+\s*}}")
 
 def resolve(config: dict[str, Any], value: str | Path) -> Path:
     expanded = os.path.expandvars(str(value))
-    # Configs are portable between the workstation and Artemisa.  When the
-    # optional TFM_ROOT variable is not set locally, infer it from the
+    # Configs are portable between local machines and shared GPU environments.
+    # When the optional TFM_ROOT variable is not set locally, infer it from the
     # repository layout instead of leaving a literal ``${TFM_ROOT}`` path.
     if "${TFM_ROOT}" in expanded:
         expanded = expanded.replace("${TFM_ROOT}", str(Path(config["_root"]).parent))

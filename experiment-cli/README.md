@@ -39,7 +39,8 @@ UV_CACHE_DIR=.uv-cache uv sync
 ```
 
 This installs CUDA user-space libraries only; a working NVIDIA device still
-requires the host/scheduler to expose `/dev/nvidia*` and a compatible driver.
+requires the host or container runtime to expose `/dev/nvidia*` and a
+compatible driver.
 
 ## Run locally on the GPU
 
@@ -102,9 +103,9 @@ The report is written to `results/local_all_modes_smoke/benchmark.json` and merg
 
 The three measurements are intentionally reported separately rather than reduced to one ranking: HTTP includes request/network overhead and depends on server concurrency, while `run-batch` includes a fresh model load. For steady-state inference compare the Python and API measurements; for a scheduled job compare the end-to-end `run-batch` measurement.
 
-## Artemisa: `vllm run-batch`
+## Batch execution with `vllm run-batch`
 
-For a scheduled Artemisa job, prepare OpenAI Batch-compatible JSONL without loading a model:
+Prepare OpenAI Batch-compatible JSONL without loading a model:
 
 ```bash
 uv run python experiment-cli/experiment_cli.py prepare \
@@ -125,7 +126,7 @@ uv run vllm run-batch \
   --enable-prefix-caching
 ```
 
-`requests.jsonl` uses the vLLM/OpenAI Batch form: a unique `custom_id`, `POST`, `/v1/chat/completions`, and a request body. JSON variants carry `response_format: json_schema`; scoring variants request one token with top log-probabilities. Thus all five configured strategies can use `run-batch` in one Artemisa job.
+`requests.jsonl` uses the vLLM/OpenAI Batch form: a unique `custom_id`, `POST`, `/v1/chat/completions`, and a request body. JSON variants carry `response_format: json_schema`; scoring variants request one token with top log-probabilities. Thus all five configured strategies can use `run-batch` in one batch job.
 
 After the worker writes `responses.jsonl`, parse it without GPU inference:
 
@@ -137,7 +138,7 @@ uv run python experiment-cli/experiment_cli.py parse \
 
 The parser checks response status and JSON schemas, extracts top token log-probabilities for the two scoring variants, and writes the same Parquet contract and manifest as `run`. Invalid structured responses produce `retry_requests.jsonl` when retries are enabled; submit that file with `vllm run-batch` and parse the retry response again. Final failures remain explicit rows rather than being silently dropped.
 
-For the five-dataset matrix, prepare independent request files so Artemisa
+For the five-dataset matrix, prepare independent request files so separate
 workers can run them in parallel:
 
 ```bash
@@ -242,7 +243,7 @@ row text so equal theory/schema prefixes can be cached by vLLM.
 
 ## Five-dataset Ministral matrix
 
-`experiments/ministral_all_datasets.yaml` is the Artemisa-ready matrix for the five
+`experiments/ministral_all_datasets.yaml` is a portable matrix for the five
 datasets used in this project: MFTC, MFRC, ValueEval, and the MFT and SHVT
 slices of ProtoEthos. It uses the model
 `mistralai/Ministral-3-3B-Instruct-2512` and the same five interface variants
@@ -262,7 +263,7 @@ uv run python experiment-cli/experiment_cli.py validate \
 ```
 
 Run a real GPU smoke test (the limit is per dataset, and still exercises all
-five variants) before submitting the full job:
+five variants) before launching the full run:
 
 ```bash
 uv run python experiment-cli/experiment_cli.py run-matrix \
