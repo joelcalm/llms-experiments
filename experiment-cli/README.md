@@ -48,6 +48,48 @@ For JSON variants, the JSON Schema is used both to constrain vLLM output and to 
 
 The runner tunes a batch size separately per variant. The manifest records every candidate, throughput, latency, telemetry snapshot, and selected size. Re-running a completed configuration resumes by `(variant_id, input_row_id)` and does not load a model when no rows remain.
 
+## Compare Python, API, and `run-batch`
+
+The same experiment can be benchmarked through three vLLM interfaces:
+
+1. `python`: direct in-process Python API using `LLM.generate`, as in the vLLM example. The model is loaded by `experiment_cli.py` and reused across all variants.
+2. `api`: OpenAI-compatible HTTP API. Start a persistent server first, for example:
+
+   ```bash
+   uv run vllm serve Qwen/Qwen3.5-0.8B \
+     --host 127.0.0.1 --port 8000 \
+     --gpu-memory-utilization 0.92 --max-model-len 2048 \
+     --max-num-seqs 128 --enable-prefix-caching --language-model-only
+   ```
+
+3. `run-batch`: the external vLLM batch CLI. Each repetition starts a `vllm run-batch` process and therefore includes model startup time.
+
+Run each approach separately on the configured 64 rows so that two model
+instances never compete for the same GPU. With the API server running, measure
+the HTTP path first:
+
+```bash
+uv run python experiment-cli/experiment_cli.py benchmark \
+  --config experiment-cli/config/local_all_modes_smoke.yaml \
+  --approaches api
+```
+
+Stop the server, then measure the other two paths:
+
+```bash
+uv run python experiment-cli/experiment_cli.py benchmark \
+  --config experiment-cli/config/local_all_modes_smoke.yaml \
+  --approaches python
+
+uv run python experiment-cli/experiment_cli.py benchmark \
+  --config experiment-cli/config/local_all_modes_smoke.yaml \
+  --approaches run-batch
+```
+
+The report is written to `outputs/local_all_modes_smoke/benchmark.json` and merges measurements from repeated `--approaches` invocations when the workload is unchanged. It records wall time, requests per second, tokens per second, errors, GPU snapshots, and whether model startup was included. The Python and HTTP measurements assume a warm model; `run-batch` is end-to-end and includes process/model startup. Use `--rows` to change the sample and `--approaches python,api` to run only a subset when the GPU can accommodate the selected services.
+
+The three measurements are intentionally reported separately rather than reduced to one ranking: HTTP includes request/network overhead and depends on server concurrency, while `run-batch` includes a fresh model load. For steady-state inference compare the Python and API measurements; for a scheduled job compare the end-to-end `run-batch` measurement.
+
 ## Artemisa: `vllm run-batch`
 
 For a scheduled Artemisa job, prepare OpenAI Batch-compatible JSONL without loading a model:

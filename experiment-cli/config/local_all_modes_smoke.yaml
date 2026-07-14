@@ -13,6 +13,7 @@ model:
   max_model_len: 2048
   max_num_seqs: 128
   enable_prefix_caching: true
+  language_model_only: true
   synchronize_cuda: false
 variants:
   - id: single_label_json
@@ -59,3 +60,16 @@ logging:
   level: INFO
   file: logs/local_all_modes_smoke.log
   events: logs/local_all_modes_smoke.events.jsonl
+benchmark:
+  approaches: [api, run-batch, python]
+  rows: 64
+  warmup_requests: 4
+  repeats: 1
+  batch_size: 32
+  run_batch_timeout_seconds: 86400
+  output: outputs/local_all_modes_smoke/benchmark.json
+  api:
+    base_url: http://127.0.0.1:8000/v1
+    api_key: EMPTY
+    concurrency: 8
+    timeout_seconds: 300

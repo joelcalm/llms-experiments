@@ -13,9 +13,11 @@ import hashlib
 import json
 import logging
 import re
+import shlex
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,6 +76,12 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
     sizes = config.get("batch", {}).get("candidates", [1])
     if not sizes or any(not isinstance(size, int) or size < 1 for size in sizes):
         raise ValueError("batch.candidates must contain positive integers")
+    benchmark_config = config.get("benchmark", {})
+    approaches = benchmark_config.get("approaches", ["api", "run-batch", "python"])
+    if not approaches or any(item not in {"api", "run-batch", "python"} for item in approaches):
+        raise ValueError("benchmark.approaches must contain api, run-batch, or python")
+    if int(benchmark_config.get("rows", 1)) < 1:
+        raise ValueError("benchmark.rows must be positive")
     if check_files:
         paths = [config["input"]["path"]]
         for variant in config["variants"]:
@@ -255,12 +263,19 @@ class VLLMBackend:
         except ImportError as exc:
             raise RuntimeError("local_vllm requires vLLM; install the uv project dependencies first.") from exc
         self.params = SamplingParams
+        llm_kwargs: dict[str, Any] = {
+            "model": model["name"],
+            "gpu_memory_utilization": model.get("gpu_memory_utilization", 0.9),
+            "max_model_len": model.get("max_model_len", 2048),
+            "max_num_seqs": model.get("max_num_seqs", 128),
+            "enable_prefix_caching": model.get("enable_prefix_caching", True),
+        }
+        if "language_model_only" in model:
+            llm_kwargs["language_model_only"] = bool(model["language_model_only"])
+        if "limit_mm_per_prompt" in model:
+            llm_kwargs["limit_mm_per_prompt"] = model["limit_mm_per_prompt"]
         self.llm = LLM(
-            model=model["name"],
-            gpu_memory_utilization=model.get("gpu_memory_utilization", 0.9),
-            max_model_len=model.get("max_model_len", 2048),
-            max_num_seqs=model.get("max_num_seqs", 128),
-            enable_prefix_caching=model.get("enable_prefix_caching", True),
+            **llm_kwargs,
         )
 
     def generate(self, prompts: list[str], variant: dict[str, Any]) -> list[Response]:
@@ -507,47 +522,60 @@ def prepare(config: dict[str, Any]) -> Path:
     path = run_dir / "requests.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        for variant in config["variants"]:
-            schema_path = variant.get("validation", {}).get("schema")
-            schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
-            for row in rows:
-                values = {
-                    "text": row[config["input"]["text_column"]],
-                    "row_id": row[config["input"]["id_column"]],
-                    "output_schema": json.dumps(schema or {}),
-                }
-                body: dict[str, Any] = {
-                    "model": config["model"]["name"],
-                    "messages": [{"role": "user", "content": prompt(config, variant["prompts"], values)}],
-                    "temperature": 0,
-                }
-                if variant["request_mode"] == "candidate_logprobs":
-                    body.update(
-                        {
-                            "max_completion_tokens": 1,
-                            "logprobs": True,
-                            "top_logprobs": max(20, len(variant["candidates"]) + 5),
-                        }
-                    )
-                else:
-                    body["max_completion_tokens"] = variant.get("max_tokens", 128)
-                    if schema:
-                        body["response_format"] = {
-                            "type": "json_schema",
-                            "json_schema": {"name": variant["id"], "schema": schema, "strict": True},
-                        }
-                handle.write(
-                    json.dumps(
-                        {
-                            "custom_id": f"{variant['id']}:{row[config['input']['id_column']]}",
-                            "method": "POST",
-                            "url": "/v1/chat/completions",
-                            "body": body,
-                        }
-                    )
-                    + "\n"
-                )
+        for request in build_requests(config, rows):
+            handle.write(json.dumps(request, ensure_ascii=False) + "\n")
     return path
+
+
+def variant_schema(config: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any] | None:
+    schema_path = variant.get("validation", {}).get("schema")
+    return json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+
+
+def request_for_row(
+    config: dict[str, Any], variant: dict[str, Any], row: dict[str, Any], schema: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    if schema is None and variant.get("validation", {}).get("schema"):
+        schema = variant_schema(config, variant)
+    values = {
+        "text": row[config["input"]["text_column"]],
+        "row_id": row[config["input"]["id_column"]],
+        "output_schema": json.dumps(schema or {}, sort_keys=True),
+    }
+    body: dict[str, Any] = {
+        "model": config["model"]["name"],
+        "messages": [{"role": "user", "content": prompt(config, variant["prompts"], values)}],
+        "temperature": 0,
+    }
+    if variant["request_mode"] == "candidate_logprobs":
+        body.update(
+            {
+                "max_completion_tokens": 1,
+                "logprobs": True,
+                "top_logprobs": max(20, len(variant["candidates"]) + 5),
+            }
+        )
+    else:
+        body["max_completion_tokens"] = variant.get("max_tokens", 128)
+        if schema:
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": variant["id"], "schema": schema, "strict": True},
+            }
+    return {
+        "custom_id": f"{variant['id']}:{row[config['input']['id_column']]}",
+        "method": "POST",
+        "url": "/v1/chat/completions",
+        "body": body,
+    }
+
+
+def build_requests(config: dict[str, Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    requests: list[dict[str, Any]] = []
+    for variant in config["variants"]:
+        schema = variant_schema(config, variant)
+        requests.extend(request_for_row(config, variant, row, schema) for row in rows)
+    return requests
 
 
 def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, dict[str, float] | None]:
@@ -659,7 +687,9 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
     return manifest
 
 
-def batch_command(config: dict[str, Any]) -> str:
+def batch_command_args(
+    config: dict[str, Any], input_path: str | Path | None = None, output_path: str | Path | None = None
+) -> list[str]:
     run_dir = resolve(config, config["output"]["directory"])
     model = config["model"]
     command = [
@@ -668,9 +698,9 @@ def batch_command(config: dict[str, Any]) -> str:
         "vllm",
         "run-batch",
         "-i",
-        str(run_dir / "requests.jsonl"),
+        str(input_path or run_dir / "requests.jsonl"),
         "-o",
-        str(run_dir / "responses.jsonl"),
+        str(output_path or run_dir / "responses.jsonl"),
         "--model",
         model["name"],
         "--gpu-memory-utilization",
@@ -682,7 +712,292 @@ def batch_command(config: dict[str, Any]) -> str:
     ]
     if model.get("enable_prefix_caching", True):
         command.append("--enable-prefix-caching")
-    return " ".join(command)
+    if model.get("language_model_only", False):
+        command.append("--language-model-only")
+    return command
+
+
+def batch_command(config: dict[str, Any]) -> str:
+    return shlex.join(batch_command_args(config))
+
+
+def response_from_api(completion: Any, variant: dict[str, Any]) -> Response:
+    choice = completion.choices[0]
+    raw = str(getattr(choice.message, "content", None) or "")
+    usage = getattr(completion, "usage", None)
+    token_count = int(getattr(usage, "completion_tokens", 0) or 0)
+    observed: dict[str, float] = {}
+    logprobs = getattr(choice, "logprobs", None)
+    for token in getattr(logprobs, "content", None) or []:
+        for candidate in getattr(token, "top_logprobs", None) or []:
+            observed[str(getattr(candidate, "token", "")).strip()] = float(getattr(candidate, "logprob", -float("inf")))
+    if variant["request_mode"] == "candidate_logprobs":
+        scores = {candidate: observed.get(str(candidate).strip(), -float("inf")) for candidate in variant["candidates"]}
+        return Response(json.dumps({"candidates": scores}), token_count, scores)
+    return Response(raw, token_count)
+
+
+def benchmark_rows(config: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+    rows = read_rows(
+        resolve(config, config["input"]["path"]),
+        config["input"]["format"],
+        config["input"]["id_column"],
+        config["input"]["text_column"],
+    )
+    requested = limit if limit is not None else config.get("benchmark", {}).get("rows", len(rows))
+    requested = int(requested)
+    if requested < 1:
+        raise ValueError("benchmark.rows must be positive")
+    return rows[:requested]
+
+
+def benchmark_python(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    settings = config.get("benchmark", {})
+    batch_size = int(settings.get("batch_size", config["model"].get("max_num_seqs", 1)))
+    warmup = int(settings.get("warmup_requests", 0))
+    repeats = int(settings.get("repeats", 1))
+    if batch_size < 1 or repeats < 1 or warmup < 0:
+        raise ValueError("benchmark.batch_size, repeats, and warmup_requests are invalid")
+    load_started = time.perf_counter()
+    backend = FakeBackend() if config["model"].get("backend") == "fake" else VLLMBackend(config["model"])
+    load_seconds = time.perf_counter() - load_started
+    entries: list[tuple[dict[str, Any], list[str]]] = []
+    for variant in config["variants"]:
+        schema = variant_schema(config, variant)
+        request_variant = {**variant, "_schema": schema}
+        prompts = [request_for_row(config, variant, row, schema)["body"]["messages"][0]["content"] for row in rows]
+        entries.append((request_variant, prompts))
+    try:
+        if warmup:
+            for variant, prompts in entries:
+                backend.generate(prompts[:warmup], variant)
+        measurements: list[dict[str, Any]] = []
+        for repeat in range(repeats):
+            before = gpu()
+            started = time.perf_counter()
+            token_count = 0
+            completed = 0
+            for variant, prompts in entries:
+                for offset in range(0, len(prompts), batch_size):
+                    responses = backend.generate(prompts[offset : offset + batch_size], variant)
+                    completed += len(responses)
+                    token_count += sum(response.token_count for response in responses)
+            sync_cuda(bool(config["model"].get("synchronize_cuda", False)))
+            elapsed = max(time.perf_counter() - started, 1e-9)
+            measurements.append(
+                {
+                    "repeat": repeat + 1,
+                    "requests": completed,
+                    "tokens": token_count,
+                    "wall_seconds": elapsed,
+                    "requests_per_second": completed / elapsed,
+                    "tokens_per_second": token_count / elapsed,
+                    "gpu_before": before,
+                    "gpu_after": gpu(),
+                }
+            )
+    finally:
+        backend.close()
+    return {
+        "measurements": measurements,
+        "model_load_seconds": load_seconds,
+        "includes_model_startup": False,
+        "batch_size": batch_size,
+        "warmup_requests_per_variant": warmup,
+    }
+
+
+def benchmark_api(config: dict[str, Any], requests: list[dict[str, Any]]) -> dict[str, Any]:
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("The API benchmark requires the `openai` package.") from exc
+    settings = config.get("benchmark", {})
+    api_settings = settings.get("api", {})
+    client = OpenAI(
+        api_key=str(api_settings.get("api_key", "EMPTY")),
+        base_url=str(api_settings.get("base_url", "http://127.0.0.1:8000/v1")),
+        timeout=float(api_settings.get("timeout_seconds", 300)),
+    )
+    concurrency = int(api_settings.get("concurrency", 1))
+    warmup = int(settings.get("warmup_requests", 0))
+    repeats = int(settings.get("repeats", 1))
+    if concurrency < 1 or repeats < 1 or warmup < 0:
+        raise ValueError("benchmark.api.concurrency, repeats, and warmup_requests are invalid")
+    variants = {variant["id"]: variant for variant in config["variants"]}
+
+    def call(request: dict[str, Any]) -> tuple[int, str | None]:
+        try:
+            completion = client.chat.completions.create(**request["body"])
+            response = response_from_api(completion, variants[request["custom_id"].split(":", 1)[0]])
+            return response.token_count, None
+        except Exception as exc:
+            return 0, str(exc)
+
+    for request in requests[:warmup]:
+        call(request)
+    measurements: list[dict[str, Any]] = []
+    for repeat in range(repeats):
+        before = gpu()
+        started = time.perf_counter()
+        token_count = 0
+        errors = 0
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            results = list(executor.map(call, requests))
+        for tokens, error in results:
+            token_count += tokens
+            errors += int(error is not None)
+        elapsed = max(time.perf_counter() - started, 1e-9)
+        measurements.append(
+            {
+                "repeat": repeat + 1,
+                "requests": len(requests),
+                "completed": len(requests) - errors,
+                "errors": errors,
+                "tokens": token_count,
+                "wall_seconds": elapsed,
+                "requests_per_second": len(requests) / elapsed,
+                "tokens_per_second": token_count / elapsed,
+                "gpu_before": before,
+                "gpu_after": gpu(),
+            }
+        )
+    return {
+        "measurements": measurements,
+        "base_url": str(api_settings.get("base_url", "http://127.0.0.1:8000/v1")),
+        "includes_model_startup": False,
+        "concurrency": concurrency,
+        "warmup_requests": warmup,
+    }
+
+
+def benchmark_run_batch(config: dict[str, Any], requests: list[dict[str, Any]], output_dir: Path) -> dict[str, Any]:
+    if config["model"].get("backend") != "local_vllm":
+        raise RuntimeError("The run-batch benchmark requires model.backend=local_vllm")
+    settings = config.get("benchmark", {})
+    repeats = int(settings.get("repeats", 1))
+    timeout = float(settings.get("run_batch_timeout_seconds", 86400))
+    if repeats < 1:
+        raise ValueError("benchmark.repeats must be positive")
+    benchmark_dir = output_dir / "benchmark"
+    benchmark_dir.mkdir(parents=True, exist_ok=True)
+    request_path = benchmark_dir / "requests.jsonl"
+    request_path.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n" for item in requests), encoding="utf-8")
+    measurements: list[dict[str, Any]] = []
+    for repeat in range(repeats):
+        response_path = benchmark_dir / f"responses-{repeat + 1:02d}.jsonl"
+        command = batch_command_args(config, request_path, response_path)
+        before = gpu()
+        started = time.perf_counter()
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=config["_root"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            errors = 0
+            response_count = 0
+            token_count = 0
+            for line in response_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                response_count += 1
+                item = json.loads(line)
+                errors += int(bool(item.get("error")))
+                usage = (item.get("response") or {}).get("body", {}).get("usage") or {}
+                token_count += int(usage.get("completion_tokens", 0) or 0)
+            command_error = None
+        except Exception as exc:
+            completed = None
+            response_count = 0
+            token_count = 0
+            errors = 1
+            command_error = str(exc)
+        elapsed = max(time.perf_counter() - started, 1e-9)
+        measurements.append(
+            {
+                "repeat": repeat + 1,
+                "requests": len(requests),
+                "completed": response_count,
+                "errors": errors,
+                "tokens": token_count,
+                "wall_seconds": elapsed,
+                "requests_per_second": response_count / elapsed,
+                "tokens_per_second": token_count / elapsed,
+                "gpu_before": before,
+                "gpu_after": gpu(),
+                "command": shlex.join(command),
+                "error": command_error,
+                "stdout_tail": completed.stdout[-1000:] if completed else None,
+                "stderr_tail": completed.stderr[-1000:] if completed else None,
+            }
+        )
+    return {
+        "measurements": measurements,
+        "includes_model_startup": True,
+        "request_file": str(request_path),
+    }
+
+
+def summarise_benchmark(data: dict[str, Any]) -> dict[str, Any]:
+    measurements = data.get("measurements", [])
+    if not measurements:
+        return {}
+    return {
+        "mean_wall_seconds": sum(item["wall_seconds"] for item in measurements) / len(measurements),
+        "mean_requests_per_second": sum(item["requests_per_second"] for item in measurements) / len(measurements),
+        "mean_tokens_per_second": sum(item["tokens_per_second"] for item in measurements) / len(measurements),
+        "total_errors": sum(int(item.get("errors", 0)) for item in measurements),
+    }
+
+
+def benchmark(config: dict[str, Any], approaches: list[str] | None = None, limit: int | None = None) -> dict[str, Any]:
+    allowed = {"api", "run-batch", "python"}
+    settings = config.get("benchmark", {})
+    selected = approaches or settings.get("approaches", sorted(allowed))
+    selected = [str(item) for item in selected]
+    if not selected or any(item not in allowed for item in selected):
+        raise ValueError("benchmark approaches must be selected from api, run-batch, and python")
+    rows = benchmark_rows(config, limit)
+    requests = build_requests(config, rows)
+    output_dir = resolve(config, config["output"]["directory"])
+    path = resolve(config, settings.get("output", output_dir / "benchmark.json"))
+    results: dict[str, Any] = {
+        "run_id": config["run"]["id"],
+        "model": config["model"],
+        "rows": len(rows),
+        "variants": len(config["variants"]),
+        "requests": len(requests),
+        "approaches": {},
+    }
+    if path.exists():
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+            same_workload = (
+                previous.get("run_id") == results["run_id"]
+                and previous.get("rows") == results["rows"]
+                and previous.get("variants") == results["variants"]
+                and previous.get("model", {}).get("name") == results["model"].get("name")
+            )
+            if same_workload:
+                results["approaches"].update(previous.get("approaches", {}))
+        except (OSError, json.JSONDecodeError):
+            pass
+    for approach in selected:
+        if approach == "python":
+            result = benchmark_python(config, rows)
+        elif approach == "api":
+            result = benchmark_api(config, requests)
+        else:
+            result = benchmark_run_batch(config, requests, output_dir)
+        result["summary"] = summarise_benchmark(result)
+        results["approaches"][approach] = result
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(results, indent=2, sort_keys=True), encoding="utf-8")
+    return results
 
 
 def self_test(config: dict[str, Any]) -> None:
@@ -704,6 +1019,9 @@ def self_test(config: dict[str, Any]) -> None:
         second = run(test, FakeBackend())
         if first["result_rows"] != len(test["variants"]) * 128 or second["resume_skipped_rows"] != first["result_rows"]:
             raise RuntimeError("self-test failed")
+        benchmark_result = benchmark(test, ["python"], 2)
+        if benchmark_result["requests"] != len(test["variants"]) * 2:
+            raise RuntimeError("benchmark self-test failed")
 
 
 def main() -> int:
@@ -712,6 +1030,14 @@ def main() -> int:
     for name in ("validate", "run", "prepare", "batch-command", "self-test"):
         command = commands.add_parser(name)
         command.add_argument("--config", required=True)
+    benchmark_parser = commands.add_parser("benchmark")
+    benchmark_parser.add_argument("--config", required=True)
+    benchmark_parser.add_argument(
+        "--approaches",
+        default=None,
+        help="Comma-separated subset of api,run-batch,python (default: all configured approaches)",
+    )
+    benchmark_parser.add_argument("--rows", type=int, default=None, help="Limit benchmark input rows")
     parse = commands.add_parser("parse")
     parse.add_argument("--config", required=True)
     parse.add_argument("--responses", required=True)
@@ -728,6 +1054,9 @@ def main() -> int:
     elif args.command == "self-test":
         self_test(config)
         print("Self-test passed")
+    elif args.command == "benchmark":
+        approaches = args.approaches.split(",") if args.approaches else None
+        print(json.dumps(benchmark(config, approaches, args.rows), indent=2))
     else:
         print(json.dumps(run(config), indent=2))
     return 0
