@@ -19,8 +19,8 @@ Each support directory is one level deep. Generated `results/` are ignored by Gi
 From the repository root, create the uv environment and run the deterministic local contract check:
 
 ```bash
-uv sync
-uv run python experiment-cli/experiment_cli.py validate \
+UV_CACHE_DIR=.uv-cache uv sync
+UV_CACHE_DIR=.uv-cache uv run python experiment-cli/experiment_cli.py validate \
   --config experiments/local_all_modes_smoke.yaml
 
 uv run python experiment-cli/experiment_cli.py self-test \
@@ -35,7 +35,7 @@ environment explicitly with uv's Torch backend selector:
 ```bash
 UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python \
   --torch-backend cu130 torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
-uv sync
+UV_CACHE_DIR=.uv-cache uv sync
 ```
 
 This installs CUDA user-space libraries only; a working NVIDIA device still
