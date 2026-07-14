@@ -1550,7 +1550,15 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
             "temperature": 0,
             "max_completion_tokens": variant.get("max_tokens", 128),
         }
-        if schema:
+        if variant["request_mode"] == "candidate_logprobs":
+            body.update(
+                {
+                    "max_completion_tokens": 1,
+                    "logprobs": True,
+                    "top_logprobs": max(20, len(variant.get("candidates", [])) + 5),
+                }
+            )
+        elif schema:
             body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": variant["id"], "schema": schema, "strict": True},
