@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import itertools
 import json
 import logging
 import os
 import re
 import shlex
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -29,12 +31,46 @@ import pyarrow.parquet as pq
 import yaml
 
 MODES = {"generate", "candidate_logprobs"}
-TOKEN = re.compile(r"{{\s*(text|row_id|dataset_id|output_schema|raw_response|validation_errors|candidates)\s*}}")
+RESULT_SCHEMA = pa.schema(
+    [
+        ("run_id", pa.string()),
+        ("dataset_id", pa.string()),
+        ("variant_id", pa.string()),
+        ("input_row_id", pa.string()),
+        ("source_position", pa.int64()),
+        ("input_text", pa.string()),
+        ("gold_labels", pa.string()),
+        ("prompt_hash", pa.string()),
+        ("config_hash", pa.string()),
+        ("prompt_group_id", pa.string()),
+        ("attempt_count", pa.int64()),
+        ("raw_response", pa.string()),
+        ("parsed_output", pa.string()),
+        ("validation_status", pa.string()),
+        ("validation_errors", pa.string()),
+        ("final_status", pa.string()),
+        ("batch_size", pa.int64()),
+        ("latency_seconds", pa.float64()),
+        ("rows_per_second", pa.float64()),
+        ("token_count", pa.int64()),
+        ("gpu_snapshot", pa.string()),
+        ("candidate_logprobs", pa.string()),
+    ]
+)
+TOKEN = re.compile(
+    r"{{\s*(text|row_id|dataset_id|labels|candidate_mapping|question|definitions|theory|output_schema|raw_response|validation_errors|candidates)\s*}}"
+)
 UNRESOLVED_TOKEN = re.compile(r"{{\s*[^{}]+\s*}}")
 
 
 def resolve(config: dict[str, Any], value: str | Path) -> Path:
-    path = Path(value)
+    expanded = os.path.expandvars(str(value))
+    # Configs are portable between the workstation and Artemisa.  When the
+    # optional TFM_ROOT variable is not set locally, infer it from the
+    # repository layout instead of leaving a literal ``${TFM_ROOT}`` path.
+    if "${TFM_ROOT}" in expanded:
+        expanded = expanded.replace("${TFM_ROOT}", str(Path(config["_root"]).parent))
+    path = Path(expanded)
     return path if path.is_absolute() else Path(config["_root"]) / path
 
 
@@ -112,7 +148,11 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
             raise ValueError(f"{identifier}: unsupported request_mode")
         if not variant.get("prompts"):
             raise ValueError(f"{identifier}: prompts must not be empty")
-        if variant["request_mode"] == "candidate_logprobs" and not variant.get("candidates"):
+        if (
+            variant["request_mode"] == "candidate_logprobs"
+            and not variant.get("candidates")
+            and not variant.get("candidates_from")
+        ):
             raise ValueError(f"{identifier}: candidate_logprobs requires candidates")
     sizes = config.get("batch", {}).get("candidates", [1])
     if not sizes or any(not isinstance(size, int) or size < 1 for size in sizes):
@@ -129,6 +169,9 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
             paths.append(source["path"])
             if source.get("format") == "paired_tsv":
                 paths.append(source["labels_path"])
+                for pair in source.get("additional_pairs", []):
+                    paths.extend([pair["path"], pair["labels_path"]])
+            paths.extend(str(item) for item in source.get("prompt_parts", {}).values())
         for variant in config["variants"]:
             paths.extend(variant["prompts"])
             if schema := variant.get("validation", {}).get("schema"):
@@ -211,27 +254,31 @@ def read_rows(
                     labels.extend(_split_labels(value))
                 rows.append({**record, "_gold_labels": sorted(set(labels))})
     elif data_format == "paired_tsv":
-        with path.open(encoding="utf-8", newline="") as handle:
-            arguments = {row[id_column]: dict(row) for row in csv.DictReader(handle, delimiter="\t")}
-        label_path = Path(source["labels_path"])
-        with label_path.open(encoding="utf-8", newline="") as handle:
-            labels = {row[id_column]: dict(row) for row in csv.DictReader(handle, delimiter="\t")}
+        pairs = [(path, Path(source["labels_path"]))]
+        pairs.extend((Path(pair["path"]), Path(pair["labels_path"])) for pair in source.get("additional_pairs", []))
         columns = source.get("label_columns")
         rows = []
-        for row_id, argument in arguments.items():
-            if row_id not in labels:
-                continue
-            label_row = labels[row_id]
-            selected = columns or [key for key in label_row if key != id_column]
-            rows.append(
-                {
-                    id_column: row_id,
-                    text_column: argument.get(text_column, ""),
-                    "_gold_labels": [
-                        key for key in selected if str(label_row.get(key, "0")).strip() in {"1", "1.0", "true", "True"}
-                    ],
-                }
-            )
+        for argument_path, label_path in pairs:
+            with argument_path.open(encoding="utf-8", newline="") as handle:
+                arguments = {row[id_column]: dict(row) for row in csv.DictReader(handle, delimiter="\t")}
+            with label_path.open(encoding="utf-8", newline="") as handle:
+                labels = {row[id_column]: dict(row) for row in csv.DictReader(handle, delimiter="\t")}
+            for row_id, argument in arguments.items():
+                if row_id not in labels:
+                    continue
+                label_row = labels[row_id]
+                selected = columns or [key for key in label_row if key != id_column]
+                rows.append(
+                    {
+                        id_column: row_id,
+                        text_column: argument.get(text_column, ""),
+                        "_gold_labels": [
+                            key
+                            for key in selected
+                            if str(label_row.get(key, "0")).strip() in {"1", "1.0", "true", "True"}
+                        ],
+                    }
+                )
     else:
         raise ValueError(f"Unsupported input format: {data_format}")
     where = source.get("where", {})
@@ -252,13 +299,27 @@ def dataset_entries(config: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     return [(str(item["id"]), item.get("input", item)) for item in config["datasets"]]
 
 
+def dataset_runtime(source: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "dataset_labels": list(source.get("labels", [])),
+        "code_labels": dict(source.get("code_labels", {})),
+        "binary_question": source.get("binary_question", "Does this text express the target value?"),
+        "prompt_parts": dict(source.get("prompt_parts", {})),
+    }
+
+
 def select_dataset(config: dict[str, Any], dataset_id: str) -> dict[str, Any]:
     for identifier, source in dataset_entries(config):
         if identifier == dataset_id:
             selected = deepcopy(config)
             selected.pop("datasets", None)
             selected["input"] = source
-            selected["run"] = {**config["run"], "id": f"{config['run']['id']}__{identifier}", "dataset_id": identifier}
+            selected["run"] = {
+                **config["run"],
+                "id": f"{config['run']['id']}__{identifier}",
+                "dataset_id": identifier,
+                **dataset_runtime(source),
+            }
             base_output = resolve(config, config["output"]["directory"])
             selected["output"] = {**config["output"], "directory": str(base_output / f"dataset={identifier}")}
             return selected
@@ -274,6 +335,10 @@ def rows_for_source(config: dict[str, Any], source: dict[str, Any], limit: int |
     resolved_source = dict(source)
     if resolved_source.get("format") == "paired_tsv" and resolved_source.get("labels_path"):
         resolved_source["labels_path"] = str(resolve(config, resolved_source["labels_path"]))
+        resolved_source["additional_pairs"] = [
+            {"path": str(resolve(config, pair["path"])), "labels_path": str(resolve(config, pair["labels_path"]))}
+            for pair in resolved_source.get("additional_pairs", [])
+        ]
     rows = read_rows(
         resolve(config, resolved_source["path"]),
         resolved_source["format"],
@@ -290,8 +355,67 @@ def rows_for_source(config: dict[str, Any], source: dict[str, Any], limit: int |
     return rows
 
 
+def iter_rows_for_source(config: dict[str, Any], source: dict[str, Any], limit: int | None = None) -> Any:
+    """Yield normalised rows without materialising large delimited sources."""
+    resolved_source = dict(source)
+    if resolved_source.get("format") == "paired_tsv" and resolved_source.get("labels_path"):
+        # Paired ValueEval files are small enough to use the existing exact
+        # join implementation; the multi-million-row ProtoEthos CSV is not.
+        yield from rows_for_source(config, source, limit)
+        return
+    if resolved_source.get("format") not in {"csv", "tsv"}:
+        yield from rows_for_source(config, source, limit)
+        return
+    path = resolve(config, resolved_source["path"])
+    delimiter = resolved_source.get("delimiter", "\t" if resolved_source["format"] == "tsv" else ",")
+    configured_limit = source.get("limit")
+    effective_limit = limit if limit is not None else configured_limit
+    if effective_limit is not None and int(effective_limit) < 1:
+        raise ValueError("row limit must be positive")
+    emitted = 0
+    position = 0
+    where = resolved_source.get("where", {})
+    with path.open(encoding="utf-8", newline="") as handle:
+        for raw in csv.DictReader(handle, delimiter=delimiter):
+            row = dict(raw)
+            if where and any(str(row.get(key)) != str(value) for key, value in where.items()):
+                continue
+            if resolved_source.get("labels_column") and "_gold_labels" not in row:
+                row["_gold_labels"] = _split_labels(row.get(resolved_source["labels_column"]))
+            if resolved_source["id_column"] not in row or resolved_source["text_column"] not in row:
+                raise ValueError(
+                    f"Input row {position} lacks `{resolved_source['id_column']}` or `{resolved_source['text_column']}`"
+                )
+            row["_source_position"] = position
+            position += 1
+            emitted += 1
+            yield row
+            if effective_limit is not None and emitted >= int(effective_limit):
+                break
+
+
 def row_key(row: dict[str, Any], config: dict[str, Any]) -> tuple[str, int]:
     return (str(row[config["input"]["id_column"]]), int(row["_source_position"]))
+
+
+def saved_position(row: dict[str, Any]) -> int:
+    value = row.get("source_position")
+    return -1 if value is None else int(value)
+
+
+def source_provenance(config: dict[str, Any]) -> dict[str, Any]:
+    source = config["input"]
+    paths = [resolve(config, source["path"])]
+    if source.get("format") == "paired_tsv":
+        paths.append(resolve(config, source["labels_path"]))
+        for pair in source.get("additional_pairs", []):
+            paths.extend([resolve(config, pair["path"]), resolve(config, pair["labels_path"])])
+    records = []
+    for path in paths:
+        stat = path.stat()
+        records.append({"path": str(path), "size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+    metadata_hash = hashlib.sha256(json.dumps(records, sort_keys=True).encode()).hexdigest()
+    return {"format": source["format"], "files": records, "metadata_hash": metadata_hash}
 
 
 def render(template: str, values: dict[str, Any]) -> str:
@@ -304,6 +428,21 @@ def render(template: str, values: dict[str, Any]) -> str:
 
 def prompt(config: dict[str, Any], paths: list[str], values: dict[str, Any]) -> str:
     return "\n\n".join(render(resolve(config, path).read_text(encoding="utf-8").strip(), values) for path in paths)
+
+
+def prompt_part_values(config: dict[str, Any], values: dict[str, Any] | None = None) -> dict[str, str]:
+    """Load reusable Markdown context fragments declared by the input.
+
+    A part is deliberately just a named Markdown file.  The file itself may
+    contain any supported generic placeholder, so theory and definitions can
+    be reused by many variants without copying text into YAML or Python.
+    """
+    rendered_values: dict[str, Any] = dict(values or {})
+    parts: dict[str, str] = {}
+    for name, path in config.get("run", {}).get("prompt_parts", {}).items():
+        raw = resolve(config, path).read_text(encoding="utf-8").strip()
+        parts[str(name)] = render(raw, {**rendered_values, **parts})
+    return parts
 
 
 def check_schema(value: Any, schema: dict[str, Any], path: str, errors: list[str]) -> None:
@@ -571,7 +710,360 @@ def serialise(value: Any) -> str | None:
     return None if value is None else json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+def prompt_group_id(config: dict[str, Any], variant: dict[str, Any], schema: dict[str, Any] | None) -> str:
+    """Identify the reusable static prefix shared by rows in a variant."""
+    sentinel = {config["input"]["id_column"]: "<row>", config["input"]["text_column"]: "<text>"}
+    static = rendered_prompt(config, variant, sentinel, schema)
+    return hashlib.sha256(static.replace("<text>", "{{text}}").encode()).hexdigest()[:16]
+
+
+def variant_config_hash(config: dict[str, Any], variant: dict[str, Any]) -> str:
+    assets = {}
+    for path in variant.get("prompts", []):
+        assets[str(path)] = resolve(config, path).read_text(encoding="utf-8")
+    for name, path in config.get("run", {}).get("prompt_parts", {}).items():
+        assets[f"part:{name}"] = resolve(config, path).read_text(encoding="utf-8")
+    payload = {
+        "variant": variant,
+        "model": config.get("model"),
+        "input": config.get("input"),
+        "run": config.get("run", {}).get("dataset_id", "default"),
+        "assets": assets,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+class ResumeIndex:
+    """Disk-backed resume keys so multi-million-row runs stay bounded in RAM."""
+
+    def __init__(self, path: Path, fingerprint: str | None = None) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.connection = sqlite3.connect(path)
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS completed (variant_id TEXT, input_row_id TEXT, source_position INTEGER, PRIMARY KEY (variant_id, input_row_id, source_position))"
+        )
+        self.connection.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
+        self.cleared = False
+        if fingerprint is not None:
+            previous = self.connection.execute("SELECT value FROM metadata WHERE key='fingerprint'").fetchone()
+            if previous and previous[0] != fingerprint:
+                self.connection.execute("DELETE FROM completed")
+                self.cleared = True
+            self.connection.execute("INSERT OR REPLACE INTO metadata VALUES ('fingerprint', ?)", (fingerprint,))
+        self.connection.commit()
+
+    def add(self, key: tuple[str, str, int]) -> None:
+        self.connection.execute("INSERT OR IGNORE INTO completed VALUES (?, ?, ?)", key)
+
+    def contains(self, key: tuple[str, str, int]) -> bool:
+        return (
+            self.connection.execute(
+                "SELECT 1 FROM completed WHERE variant_id=? AND input_row_id=? AND source_position=? LIMIT 1", key
+            ).fetchone()
+            is not None
+        )
+
+    def seed_from(self, paths: list[Path], expected_hashes: dict[str, str] | None = None) -> int:
+        count = 0
+        for path in paths:
+            if not path.exists():
+                continue
+            parquet = pq.ParquetFile(path)
+            columns = ["variant_id", "input_row_id", "source_position"]
+            if expected_hashes and "config_hash" in parquet.schema.names:
+                columns.append("config_hash")
+            for batch in parquet.iter_batches(columns=columns):
+                records = batch.to_pylist()
+                if expected_hashes:
+                    records = [
+                        row for row in records if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))
+                    ]
+                self.connection.executemany(
+                    "INSERT OR IGNORE INTO completed VALUES (?, ?, ?)",
+                    [(str(row["variant_id"]), str(row["input_row_id"]), saved_position(row)) for row in records],
+                )
+                count += len(records)
+        self.connection.commit()
+        return count
+
+    def close(self) -> None:
+        self.connection.commit()
+        self.connection.close()
+
+
+class PartWriter:
+    def __init__(self, run_dir: Path, variant_id: str, target_rows: int = 4096) -> None:
+        self.directory = run_dir / "parts" / f"variant={variant_id}"
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.target_rows = max(1, target_rows)
+        self.rows: list[dict[str, Any]] = []
+        self.index = len(list(self.directory.glob("part-*.parquet")))
+
+    def append(self, row: dict[str, Any]) -> None:
+        self.rows.append(row)
+        if len(self.rows) >= self.target_rows:
+            self.flush()
+
+    def flush(self) -> None:
+        if not self.rows:
+            return
+        path = self.directory / f"part-{self.index:05d}.parquet"
+        pq.write_table(pa.Table.from_pylist(self.rows, schema=RESULT_SCHEMA), path, compression="zstd")
+        self.index += 1
+        self.rows.clear()
+
+    def close(self) -> None:
+        self.flush()
+
+
+def merge_parts(run_dir: Path, expected_hashes: dict[str, str] | None = None) -> int:
+    """Create compatibility result files from append-only variant parts."""
+    files = sorted((run_dir / "parts").glob("variant=*/part-*.parquet")) if (run_dir / "parts").exists() else []
+    if not files:
+        return 0
+    writer: pq.ParquetWriter | None = None
+    variant_writers: dict[str, pq.ParquetWriter] = {}
+    count = 0
+    try:
+        for path in files:
+            table = pq.read_table(path)
+            if expected_hashes and "config_hash" in table.column_names:
+                variant_id = path.parent.name.split("=", 1)[-1]
+                table = table.filter(pa.compute.equal(table["config_hash"], expected_hashes.get(variant_id, "")))
+                if table.num_rows == 0:
+                    continue
+            if writer is None:
+                writer = pq.ParquetWriter(run_dir / "results.parquet", table.schema, compression="zstd")
+            writer.write_table(table)
+            variant = path.parent.name.split("=", 1)[-1]
+            if variant not in variant_writers:
+                variant_writers[variant] = pq.ParquetWriter(
+                    run_dir / f"{variant}.parquet", table.schema, compression="zstd"
+                )
+            variant_writers[variant].write_table(table)
+            count += table.num_rows
+    finally:
+        if writer is not None:
+            writer.close()
+        for item in variant_writers.values():
+            item.close()
+    return count
+
+
+def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit: int | None = None) -> dict[str, Any]:
+    """Execute a source in bounded chunks and append Parquet parts."""
+    run_id = config["run"]["id"]
+    run_dir = resolve(config, config["output"]["directory"])
+    logging_config = config.get("logging", {})
+    if any(key in config.get("_override_keys", []) for key in ("run.id", "output.directory")):
+        logging_config = dict(logging_config)
+        logging_config["file"] = str(run_dir / "logs" / f"{run_id}.log")
+        logging_config["events"] = str(run_dir / "logs" / f"{run_id}.events.jsonl")
+    events = Events(
+        resolve(config, logging_config.get("file", f"logs/{run_id}.log")),
+        resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
+        logging_config.get("level", "INFO"),
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    expected_hashes = {
+        str(variant["id"]): variant_config_hash(config, materialize_variant(config, variant))
+        for variant in config["variants"]
+    }
+    index = ResumeIndex(
+        run_dir / ".resume.sqlite", hashlib.sha256(json.dumps(expected_hashes, sort_keys=True).encode()).hexdigest()
+    )
+    if index.cleared:
+        import shutil
+
+        if (run_dir / "parts").exists():
+            shutil.rmtree(run_dir / "parts")
+        if (run_dir / "results.parquet").exists():
+            (run_dir / "results.parquet").unlink()
+        for variant in config["variants"]:
+            v_parquet = run_dir / f"{variant['id']}.parquet"
+            if v_parquet.exists():
+                v_parquet.unlink()
+    part_files = list((run_dir / "parts").glob("variant=*/part-*.parquet")) if (run_dir / "parts").exists() else []
+    seeded = index.seed_from(
+        part_files or ([run_dir / "results.parquet"] if (run_dir / "results.parquet").exists() else []), expected_hashes
+    )
+    created = False
+    selected: dict[str, Any] = {}
+    total_input = 0
+    total_results = seeded
+    try:
+        for configured_variant in config["variants"]:
+            variant = materialize_variant(config, configured_variant)
+            schema = variant_schema(config, variant)
+            request_variant = {**variant, "_schema": schema}
+            source_iter = iter_rows_for_source(config, config["input"], row_limit)
+            batch_config = dict(config.get("batch", {}))
+            maximum = int(config["model"].get("max_num_seqs", max(batch_config.get("candidates", [1]))))
+            batch_config["candidates"] = [
+                item for item in batch_config.get("candidates", [1]) if int(item) <= maximum
+            ] or [maximum]
+            prefetch_count = max(
+                int(batch_config.get("warmup_rows", 64)), *[int(item) for item in batch_config["candidates"]]
+            )
+            prefetched = list(itertools.islice(source_iter, prefetch_count))
+            if not prefetched:
+                continue
+            if total_input == 0:
+                total_input = len(prefetched)
+            tune_prompts = [rendered_prompt(config, variant, row, schema) for row in prefetched]
+            if backend is None:
+                backend = FakeBackend() if config["model"]["backend"] == "fake" else VLLMBackend(config["model"])
+                created = True
+            size, attempts = tune(
+                backend,
+                request_variant,
+                tune_prompts,
+                batch_config,
+                events,
+                bool(config["model"].get("synchronize_cuda", False)),
+            )
+            size = min(size, maximum)
+            group_id = prompt_group_id(config, variant, schema)
+            selected[variant["id"]] = {"selected_batch_size": size, "prompt_group_id": group_id, "tuning": attempts}
+            events.emit("variant_started", variant=variant["id"], prompt_group_id=group_id, batch_size=size)
+            correction_path = config.get("validation", {}).get("retry", {}).get("correction_prompt")
+            correction = resolve(config, correction_path).read_text(encoding="utf-8") if correction_path else None
+            writer = PartWriter(run_dir, variant["id"], int(config.get("streaming", {}).get("output_chunk_rows", 4096)))
+            pending_rows = itertools.chain(prefetched, source_iter)
+            buffer = []
+            while True:
+                while len(buffer) < size:
+                    try:
+                        row = next(pending_rows)
+                        key = (variant["id"], str(row[config["input"]["id_column"]]), int(row["_source_position"]))
+                        if not index.contains(key):
+                            buffer.append(row)
+                    except StopIteration:
+                        break
+                if not buffer:
+                    break
+                chunk = buffer[:size]
+                prompts = [rendered_prompt(config, variant, row, schema) for row in chunk]
+                started = time.perf_counter()
+                while True:
+                    try:
+                        responses = backend.generate(prompts, request_variant)
+                        if len(responses) != len(chunk):
+                            raise BackendFailure(
+                                f"Backend returned {len(responses)} responses for {len(chunk)} prompts"
+                            )
+                        break
+                    except BackendFailure as exc:
+                        minimum = int(batch_config.get("min_size", 1))
+                        if len(chunk) <= minimum:
+                            raise
+                        size = max(minimum, len(chunk) // 2)
+                        selected[variant["id"]]["runtime_batch_size"] = size
+                        events.emit("batch_runtime_backoff", variant=variant["id"], new_batch_size=size, error=str(exc))
+                        chunk = chunk[:size]
+                        prompts = prompts[:size]
+                elapsed = max(time.perf_counter() - started, 1e-9)
+                snapshot = serialise(gpu())
+                for row, current_prompt, response in zip(chunk, prompts, responses):
+                    parsed, errors = validate_response(response.raw, schema)
+                    raw = response.raw
+                    attempt_count = 1
+                    if request_variant["request_mode"] == "candidate_logprobs":
+                        parsed, errors = {"candidates": response.candidate_logprobs or {}}, []
+
+                    if (
+                        errors
+                        and correction
+                        and config.get("validation", {}).get("retry", {}).get("enabled")
+                        and request_variant["request_mode"] != "candidate_logprobs"
+                    ):
+                        events.emit(
+                            "retry_started", variant=variant["id"], input_row_id=str(row[config["input"]["id_column"]])
+                        )
+                        for _ in range(int(config["validation"]["retry"].get("max_attempts", 0))):
+                            retry_prompt = render(
+                                correction,
+                                retry_values(config, variant, row, schema, raw, errors),
+                            )
+                            raw = backend.generate([retry_prompt], request_variant)[0].raw
+                            parsed, errors = validate_response(raw, schema)
+                            attempt_count += 1
+                            if not errors:
+                                break
+                        events.emit(
+                            "retry_completed",
+                            variant=variant["id"],
+                            input_row_id=str(row[config["input"]["id_column"]]),
+                            attempts=attempt_count,
+                            validation_status="valid" if not errors else "invalid",
+                        )
+
+                    output = {
+                        "run_id": run_id,
+                        "dataset_id": config["run"].get("dataset_id", "default"),
+                        "variant_id": variant["id"],
+                        "input_row_id": str(row[config["input"]["id_column"]]),
+                        "source_position": row["_source_position"],
+                        "input_text": str(row[config["input"]["text_column"]])
+                        if config["output"].get("include_text")
+                        else None,
+                        "gold_labels": serialise(row.get("_gold_labels")),
+                        "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
+                        "config_hash": variant_config_hash(config, variant),
+                        "prompt_group_id": group_id,
+                        "attempt_count": attempt_count,
+                        "raw_response": raw if config["output"].get("include_raw_response", True) else None,
+                        "parsed_output": serialise(parsed),
+                        "validation_status": "valid" if not errors else "invalid",
+                        "validation_errors": serialise(errors),
+                        "final_status": "completed" if not errors else "failed_validation",
+                        "batch_size": size,
+                        "latency_seconds": elapsed / len(chunk),
+                        "rows_per_second": len(chunk) / elapsed,
+                        "token_count": response.token_count,
+                        "gpu_snapshot": snapshot,
+                        "candidate_logprobs": serialise(response.candidate_logprobs),
+                    }
+                    writer.append(output)
+                    index.add((variant["id"], output["input_row_id"], int(output["source_position"])))
+                    total_results += 1
+                index.connection.commit()
+                events.emit(
+                    "batch_completed", variant=variant["id"], rows=len(chunk), rows_per_second=len(chunk) / elapsed
+                )
+                buffer = buffer[len(chunk) :]
+            writer.close()
+            events.emit("variant_completed", variant=variant["id"])
+            if total_input == len(prefetched):
+                total_input = sum(1 for _ in iter_rows_for_source(config, config["input"], row_limit))
+        merged = merge_parts(run_dir, expected_hashes)
+    finally:
+        if created and backend is not None:
+            backend.close()
+        index.close()
+    effective = {key: value for key, value in config.items() if not key.startswith("_")}
+    (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(effective, sort_keys=False), encoding="utf-8")
+    manifest = {
+        "run_id": run_id,
+        "dataset_id": config["run"].get("dataset_id", "default"),
+        "input_rows": total_input,
+        "result_rows": merged or total_results,
+        "model": config["model"],
+        "variants": selected,
+        "streaming": True,
+        "gpu_preflight": gpu(),
+        "source_provenance": source_provenance(config),
+        "resume_skipped_rows": seeded,
+        "event_log": str(events.path),
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    events.emit("run_completed", result_rows=manifest["result_rows"], gpu=gpu())
+    return manifest
+
+
 def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | None = None) -> dict[str, Any]:
+    if config.get("streaming", {}).get("enabled", False):
+        return run_streaming(config, backend, row_limit)
     run_id = config["run"]["id"]
     run_dir = resolve(config, config["output"]["directory"])
     logging_config = config.get("logging", {})
@@ -587,8 +1079,14 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
     rows = rows_for_source(config, config["input"], row_limit)
     result_path = run_dir / "results.parquet"
     existing = pq.read_table(result_path).to_pylist() if result_path.exists() else []
+    expected_hashes = {
+        str(item["id"]): variant_config_hash(config, materialize_variant(config, item)) for item in config["variants"]
+    }
+    existing = [row for row in existing if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))]
     complete = {
-        (str(row["variant_id"]), str(row["input_row_id"]), int(row.get("source_position") or -1)) for row in existing
+        (str(row["variant_id"]), str(row["input_row_id"]), saved_position(row))
+        for row in existing
+        if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))
     }
     previous = (
         json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -600,7 +1098,8 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
     correction_path = config.get("validation", {}).get("retry", {}).get("correction_prompt")
     correction = resolve(config, correction_path).read_text(encoding="utf-8") if correction_path else None
     try:
-        for variant in config["variants"]:
+        for configured_variant in config["variants"]:
+            variant = materialize_variant(config, configured_variant)
             pending = [row for row in rows if (variant["id"], *row_key(row, config)) not in complete]
             if not pending:
                 events.emit("variant_resumed", variant=variant["id"], skipped=len(rows))
@@ -612,6 +1111,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
             schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
             request_variant = {**variant, "_schema": schema}
             prompts = [rendered_prompt(config, variant, row, schema) for row in pending]
+            group_id = prompt_group_id(config, variant, schema)
             batch = dict(config.get("batch", {}))
             maximum = int(config["model"].get("max_num_seqs", max(batch.get("candidates", [1]))))
             batch["candidates"] = [item for item in batch.get("candidates", [1]) if int(item) <= maximum] or [maximum]
@@ -619,8 +1119,15 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                 backend, request_variant, prompts, batch, events, bool(config["model"].get("synchronize_cuda", False))
             )
             size = min(size, maximum)
-            selected[variant["id"]] = {"selected_batch_size": size, "tuning": attempts, "pending_rows": len(pending)}
-            events.emit("variant_started", variant=variant["id"], rows=len(pending), batch_size=size)
+            selected[variant["id"]] = {
+                "selected_batch_size": size,
+                "prompt_group_id": group_id,
+                "tuning": attempts,
+                "pending_rows": len(pending),
+            }
+            events.emit(
+                "variant_started", variant=variant["id"], prompt_group_id=group_id, rows=len(pending), batch_size=size
+            )
             offset = 0
             while offset < len(pending):
                 chunk, chunk_prompts = pending[offset : offset + size], prompts[offset : offset + size]
@@ -665,15 +1172,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                         for _ in range(int(config["validation"]["retry"].get("max_attempts", 0))):
                             retry_prompt = render(
                                 correction,
-                                {
-                                    "text": row[config["input"]["text_column"]],
-                                    "row_id": row[config["input"]["id_column"]],
-                                    "dataset_id": config["run"].get("dataset_id", "default"),
-                                    "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
-                                    "output_schema": json.dumps(schema or {}, sort_keys=True),
-                                    "raw_response": raw,
-                                    "validation_errors": "; ".join(errors),
-                                },
+                                retry_values(config, variant, row, schema, raw, errors),
                             )
                             raw = backend.generate([retry_prompt], request_variant)[0].raw
                             parsed, errors = validate_response(raw, schema)
@@ -699,7 +1198,8 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                             else None,
                             "gold_labels": serialise(row.get("_gold_labels")),
                             "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                            "config_hash": hashlib.sha256(json.dumps(variant, sort_keys=True).encode()).hexdigest(),
+                            "config_hash": variant_config_hash(config, variant),
+                            "prompt_group_id": group_id,
                             "attempt_count": count,
                             "raw_response": raw if config["output"].get("include_raw_response", True) else None,
                             "parsed_output": serialise(parsed),
@@ -739,6 +1239,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
         "model": config["model"],
         "variants": selected,
         "gpu_preflight": gpu(),
+        "source_provenance": source_provenance(config),
         "resume_skipped_rows": len(complete),
         "event_log": str(events.path),
     }
@@ -772,18 +1273,17 @@ def run_matrix(
                 **config["run"],
                 "id": f"{config['run']['id']}__{dataset_id}",
                 "dataset_id": dataset_id,
+                **dataset_runtime(source),
             }
             dataset_config["output"] = {
                 **config["output"],
                 "directory": str(base_output / f"dataset={dataset_id}"),
             }
             logging_config = dict(config.get("logging", {}))
-            if logging_config.get("file"):
-                logging_config["file"] = str(resolve(config, logging_config["file"]).with_name(f"{dataset_id}.log"))
-            if logging_config.get("events"):
-                logging_config["events"] = str(
-                    resolve(config, logging_config["events"]).with_name(f"{dataset_id}.events.jsonl")
-                )
+            # Matrix workers must never share the YAML's default log names;
+            # derive them from the effective output directory and run id.
+            logging_config["file"] = str(base_output / "logs" / f"{dataset_id}.log")
+            logging_config["events"] = str(base_output / "logs" / f"{dataset_id}.events.jsonl")
             dataset_config["logging"] = logging_config
             manifests.append(run(dataset_config, shared, row_limit=row_limit))
     finally:
@@ -816,12 +1316,13 @@ def config_overrides(args: argparse.Namespace) -> list[str]:
 
 def prepare(config: dict[str, Any]) -> Path:
     run_dir = resolve(config, config["output"]["directory"])
-    rows = rows_for_source(config, config["input"])
     path = run_dir / "requests.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        for request in build_requests(config, rows):
-            handle.write(json.dumps(request, ensure_ascii=False) + "\n")
+        for variant in config["variants"]:
+            schema = variant_schema(config, variant)
+            for row in iter_rows_for_source(config, config["input"]):
+                handle.write(json.dumps(request_for_row(config, variant, row, schema), ensure_ascii=False) + "\n")
     return path
 
 
@@ -846,6 +1347,7 @@ def prepare_matrix(config: dict[str, Any], selected: list[str] | None = None) ->
             **config["run"],
             "id": f"{config['run']['id']}__{dataset_id}",
             "dataset_id": dataset_id,
+            **dataset_runtime(source),
         }
         dataset_config["output"] = {**config["output"], "directory": str(base_output / f"dataset={dataset_id}")}
         paths.append(prepare(dataset_config))
@@ -854,12 +1356,40 @@ def prepare_matrix(config: dict[str, Any], selected: list[str] | None = None) ->
 
 def variant_schema(config: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any] | None:
     schema_path = variant.get("validation", {}).get("schema")
-    return json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+    schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+    enum_from = variant.get("validation", {}).get("enum_from") if schema else None
+    labels = list(config.get("run", {}).get("dataset_labels", []))
+    if enum_from == "dataset_labels" and labels:
+
+        def replace_enums(node: Any) -> None:
+            if isinstance(node, dict):
+                if node.get("type") == "string" and "enum" in node:
+                    node["enum"] = labels
+                for child in node.values():
+                    replace_enums(child)
+            elif isinstance(node, list):
+                for child in node:
+                    replace_enums(child)
+
+        replace_enums(schema)
+    return schema
+
+
+def materialize_variant(config: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
+    materialized = deepcopy(variant)
+    source = materialized.get("candidates_from")
+    if source == "dataset_labels":
+        materialized["candidates"] = list(config.get("run", {}).get("dataset_labels", []))
+    elif source == "code_labels":
+        mapping = config.get("run", {}).get("code_labels", {})
+        materialized["candidates"] = list(mapping)
+    return materialized
 
 
 def rendered_prompt(
     config: dict[str, Any], variant: dict[str, Any], row: dict[str, Any], schema: dict[str, Any] | None = None
 ) -> str:
+    variant = materialize_variant(config, variant)
     if schema is None and variant.get("validation", {}).get("schema"):
         schema = variant_schema(config, variant)
     values = {
@@ -867,17 +1397,51 @@ def rendered_prompt(
         "row_id": row[config["input"]["id_column"]],
         "dataset_id": config["run"].get("dataset_id", "default"),
         "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
+        "labels": ", ".join(str(item) for item in config.get("run", {}).get("dataset_labels", [])),
+        "candidate_mapping": ", ".join(
+            f"{code}={label}" for code, label in config.get("run", {}).get("code_labels", {}).items()
+        )
+        or ", ".join(str(item) for item in variant.get("candidates", [])),
+        "question": config.get("run", {}).get("binary_question", "Does this text express the target value?"),
         "output_schema": json.dumps(schema or {}, sort_keys=True),
     }
+    values.update(prompt_part_values(config, values))
     content = prompt(config, variant["prompts"], values)
-    if variant["request_mode"] == "candidate_logprobs":
-        content += "\n\nAnswer with exactly one candidate token:"
     return content
+
+
+def retry_values(
+    config: dict[str, Any],
+    variant: dict[str, Any],
+    row: dict[str, Any],
+    schema: dict[str, Any] | None,
+    raw: str,
+    errors: list[str],
+) -> dict[str, Any]:
+    variant = materialize_variant(config, variant)
+    values = {
+        "text": row[config["input"]["text_column"]],
+        "row_id": row[config["input"]["id_column"]],
+        "dataset_id": config["run"].get("dataset_id", "default"),
+        "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
+        "labels": ", ".join(str(item) for item in config.get("run", {}).get("dataset_labels", [])),
+        "candidate_mapping": ", ".join(
+            f"{code}={label}" for code, label in config.get("run", {}).get("code_labels", {}).items()
+        )
+        or ", ".join(str(item) for item in variant.get("candidates", [])),
+        "question": config.get("run", {}).get("binary_question", "Does this text express the target value?"),
+        "output_schema": json.dumps(schema or {}, sort_keys=True),
+        "raw_response": raw,
+        "validation_errors": "; ".join(errors),
+    }
+    values.update(prompt_part_values(config, values))
+    return values
 
 
 def request_for_row(
     config: dict[str, Any], variant: dict[str, Any], row: dict[str, Any], schema: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    variant = materialize_variant(config, variant)
     content = rendered_prompt(config, variant, row, schema)
     body: dict[str, Any] = {
         "model": config["model"]["name"],
@@ -946,6 +1510,10 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
     run_id = config["run"]["id"]
     run_dir = resolve(config, config["output"]["directory"])
     logging_config = config.get("logging", {})
+    if any(key in config.get("_override_keys", []) for key in ("run.id", "output.directory")):
+        logging_config = dict(logging_config)
+        logging_config["file"] = str(run_dir / "logs" / f"{run_id}.log")
+        logging_config["events"] = str(run_dir / "logs" / f"{run_id}.events.jsonl")
     events = Events(
         resolve(config, logging_config.get("file", f"logs/{run_id}.log")),
         resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
@@ -954,19 +1522,69 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
     rows = rows_for_source(config, config["input"])
     result_path = run_dir / "results.parquet"
     saved = pq.read_table(result_path).to_pylist() if result_path.exists() else []
-    complete = {
-        (str(row["variant_id"]), str(row["input_row_id"]), int(row.get("source_position") or -1)) for row in saved
+    expected_hashes = {
+        str(item["id"]): variant_config_hash(config, materialize_variant(config, item)) for item in config["variants"]
     }
-    for variant in config["variants"]:
+    saved = [row for row in saved if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))]
+    complete = {
+        (str(row["variant_id"]), str(row["input_row_id"]), saved_position(row))
+        for row in saved
+        if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))
+    }
+    retry_settings = config.get("validation", {}).get("retry", {})
+    correction_path = retry_settings.get("correction_prompt")
+    correction = resolve(config, correction_path).read_text(encoding="utf-8") if correction_path else None
+    retry_requests: list[dict[str, Any]] = []
+
+    def add_retry_request(
+        variant: dict[str, Any], row: dict[str, Any], raw: str, errors: list[str], attempt: int
+    ) -> None:
+        if not correction or not retry_settings.get("enabled") or attempt > int(retry_settings.get("max_attempts", 0)):
+            return
+        values = retry_values(config, variant, row, variant_schema(config, variant), raw, errors)
+        retry_prompt = render(correction, values)
+        schema = variant_schema(config, variant)
+        body: dict[str, Any] = {
+            "model": config["model"]["name"],
+            "messages": [{"role": "user", "content": retry_prompt}],
+            "temperature": 0,
+            "max_completion_tokens": variant.get("max_tokens", 128),
+        }
+        if schema:
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": variant["id"], "schema": schema, "strict": True},
+            }
+        retry_requests.append(
+            {
+                "custom_id": f"retry:{variant['id']}:{row[config['input']['id_column']]}:{row['_source_position']}:{attempt}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": body,
+            }
+        )
+
+    for configured_variant in config["variants"]:
+        variant = materialize_variant(config, configured_variant)
         schema_path = variant.get("validation", {}).get("schema")
         schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+        group_id = prompt_group_id(config, variant, schema)
         for row in rows:
             row_id = str(row[config["input"]["id_column"]])
-            if (variant["id"], *row_key(row, config)) in complete:
+            key = (variant["id"], *row_key(row, config))
+            retry_items = [
+                item
+                for item_id, item in responses.items()
+                if item_id.startswith(f"retry:{variant['id']}:{row_id}:{row['_source_position']}:")
+            ]
+            if key in complete and not retry_items:
                 continue
             current_prompt = rendered_prompt(config, variant, row, schema)
             custom_id = f"{variant['id']}:{row_id}:{row['_source_position']}"
-            raw, batch_error, observed = _batch_text(responses.get(custom_id, {}))
+            if custom_id not in responses:
+                raw, batch_error, observed = None, "missing_batch_response", None
+            else:
+                raw, batch_error, observed = _batch_text(responses[custom_id])
             parsed, errors = (
                 validate_response(raw or "", schema)
                 if raw is not None
@@ -979,6 +1597,54 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                     for candidate in variant["candidates"]
                 }
                 parsed, errors = {"candidates": scores}, []
+            attempt_count = 1
+            if retry_items:
+                retry_id = max(
+                    (
+                        item_id
+                        for item_id in responses
+                        if item_id.startswith(f"retry:{variant['id']}:{row_id}:{row['_source_position']}:")
+                    ),
+                    key=lambda x: int(x.rsplit(":", 1)[-1]),
+                )
+                retry_raw, retry_error, retry_observed = _batch_text(responses[retry_id])
+                if retry_raw is not None:
+                    raw = retry_raw
+                    parsed, errors = validate_response(raw, schema)
+                    attempt_count = int(retry_id.rsplit(":", 1)[-1])
+                    if variant["request_mode"] == "candidate_logprobs" and retry_observed is not None:
+                        scores = {
+                            candidate: retry_observed.get(str(candidate).strip(), -float("inf"))
+                            for candidate in variant["candidates"]
+                        }
+                        parsed, errors = {"candidates": scores}, []
+                else:
+                    errors = [retry_error or "missing_retry_response"]
+                target = next(
+                    (
+                        item
+                        for item in reversed(saved)
+                        if item["variant_id"] == variant["id"]
+                        and item["input_row_id"] == row_id
+                        and saved_position(item) == int(row["_source_position"])
+                    ),
+                    None,
+                )
+                if target is not None:
+                    target.update(
+                        {
+                            "attempt_count": attempt_count,
+                            "raw_response": raw,
+                            "parsed_output": serialise(parsed),
+                            "validation_status": "valid" if not errors else "invalid",
+                            "validation_errors": serialise(errors),
+                            "final_status": "completed" if not errors else "failed_validation",
+                            "candidate_logprobs": serialise(scores),
+                        }
+                    )
+                    add_retry_request(variant, row, raw or "", errors, attempt_count + 1)
+                    continue
+            add_retry_request(variant, row, raw or "", errors, attempt_count + 1)
             saved.append(
                 {
                     "run_id": run_id,
@@ -991,13 +1657,22 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                     else None,
                     "gold_labels": serialise(row.get("_gold_labels")),
                     "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                    "config_hash": hashlib.sha256(json.dumps(variant, sort_keys=True).encode()).hexdigest(),
-                    "attempt_count": 1,
+                    "config_hash": variant_config_hash(config, variant),
+                    "prompt_group_id": group_id,
+                    "attempt_count": attempt_count,
                     "raw_response": raw if config["output"].get("include_raw_response", True) else None,
                     "parsed_output": serialise(parsed),
                     "validation_status": "valid" if not errors else "invalid",
                     "validation_errors": serialise(errors),
-                    "final_status": "completed" if not errors else "failed_validation",
+                    "final_status": "completed"
+                    if not errors
+                    else (
+                        "retry_pending"
+                        if correction
+                        and retry_settings.get("enabled")
+                        and int(retry_settings.get("max_attempts", 0)) >= 1
+                        else "failed_validation"
+                    ),
                     "batch_size": None,
                     "latency_seconds": None,
                     "rows_per_second": None,
@@ -1007,6 +1682,12 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                 }
             )
     write_results(run_dir, saved)
+    retry_path = None
+    if retry_requests:
+        retry_path = run_dir / "retry_requests.jsonl"
+        retry_path.write_text(
+            "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in retry_requests), encoding="utf-8"
+        )
     manifest = {
         "run_id": run_id,
         "dataset_id": config["run"].get("dataset_id", "default"),
@@ -1015,8 +1696,11 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
         "model": config["model"],
         "variants": {variant["id"]: {"external_batch": True} for variant in config["variants"]},
         "batch_response_path": str(source),
+        "source_provenance": source_provenance(config),
         "resume_skipped_rows": len(complete),
         "event_log": str(events.path),
+        "retry_request_path": str(retry_path) if retry_path else None,
+        "retry_requests": len(retry_requests),
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     events.emit("batch_parse_completed", result_rows=len(saved), response_path=str(source))
@@ -1157,7 +1841,7 @@ def benchmark_api(config: dict[str, Any], requests: list[dict[str, Any]]) -> dic
     repeats = int(settings.get("repeats", 1))
     if concurrency < 1 or repeats < 1 or warmup < 0:
         raise ValueError("benchmark.api.concurrency, repeats, and warmup_requests are invalid")
-    variants = {variant["id"]: variant for variant in config["variants"]}
+    variants = {variant["id"]: materialize_variant(config, variant) for variant in config["variants"]}
 
     def call(request: dict[str, Any]) -> tuple[int, str | None]:
         try:
@@ -1307,6 +1991,12 @@ def benchmark(config: dict[str, Any], approaches: list[str] | None = None, limit
         "rows": len(rows),
         "variants": len(config["variants"]),
         "requests": len(requests),
+        "workload_hash": hashlib.sha256(
+            json.dumps(
+                [variant_config_hash(config, materialize_variant(config, variant)) for variant in config["variants"]],
+                sort_keys=True,
+            ).encode()
+        ).hexdigest(),
         "approaches": {},
     }
     if path.exists():
@@ -1317,6 +2007,7 @@ def benchmark(config: dict[str, Any], approaches: list[str] | None = None, limit
                 and previous.get("rows") == results["rows"]
                 and previous.get("variants") == results["variants"]
                 and previous.get("model", {}).get("name") == results["model"].get("name")
+                and previous.get("workload_hash") == results["workload_hash"]
             )
             if same_workload:
                 results["approaches"].update(previous.get("approaches", {}))
