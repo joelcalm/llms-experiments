@@ -29,6 +29,18 @@ uv run python experiment-cli/experiment_cli.py self-test \
 
 `self-test` uses the built-in fake backend, writes only temporary files, and checks all five request modes plus resume behaviour.
 
+The project is locked to the CUDA 13.0 PyTorch wheels. To recreate the
+environment explicitly with uv's Torch backend selector:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python \
+  --torch-backend cu130 torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
+uv sync
+```
+
+This installs CUDA user-space libraries only; a working NVIDIA device still
+requires the host/scheduler to expose `/dev/nvidia*` and a compatible driver.
+
 ## Run locally on the GPU
 
 ```bash
