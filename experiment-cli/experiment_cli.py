@@ -452,7 +452,6 @@ class VLLMBackend:
 
     def generate(self, prompts: list[str], variant: dict[str, Any]) -> list[Response]:
         if variant["request_mode"] == "candidate_logprobs":
-            prompts = [item + "\n\nAnswer with exactly one candidate token:" for item in prompts]
             params = self.params(temperature=0, max_tokens=1, logprobs=max(20, len(variant["candidates"]) + 5))
         else:
             kwargs: dict[str, Any] = {"temperature": 0, "max_tokens": variant.get("max_tokens", 128)}
@@ -576,14 +575,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
             schema_path = variant.get("validation", {}).get("schema")
             schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
             request_variant = {**variant, "_schema": schema}
-            values = lambda row: {
-                "text": row[config["input"]["text_column"]],
-                "row_id": row[config["input"]["id_column"]],
-                "dataset_id": config["run"].get("dataset_id", "default"),
-                "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
-                "output_schema": json.dumps(schema or {}, sort_keys=True),
-            }
-            prompts = [prompt(config, variant["prompts"], values(row)) for row in pending]
+            prompts = [rendered_prompt(config, variant, row, schema) for row in pending]
             batch = dict(config.get("batch", {}))
             maximum = int(config["model"].get("max_num_seqs", max(batch.get("candidates", [1]))))
             batch["candidates"] = [item for item in batch.get("candidates", [1]) if int(item) <= maximum] or [maximum]
@@ -610,7 +602,16 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                         )
                         for _ in range(int(config["validation"]["retry"].get("max_attempts", 0))):
                             retry_prompt = render(
-                                correction, {**values(row), "raw_response": raw, "validation_errors": "; ".join(errors)}
+                                correction,
+                                {
+                                    "text": row[config["input"]["text_column"]],
+                                    "row_id": row[config["input"]["id_column"]],
+                                    "dataset_id": config["run"].get("dataset_id", "default"),
+                                    "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
+                                    "output_schema": json.dumps(schema or {}, sort_keys=True),
+                                    "raw_response": raw,
+                                    "validation_errors": "; ".join(errors),
+                                },
                             )
                             raw = backend.generate([retry_prompt], request_variant)[0].raw
                             parsed, errors = validate_response(raw, schema)
@@ -792,9 +793,9 @@ def variant_schema(config: dict[str, Any], variant: dict[str, Any]) -> dict[str,
     return json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
 
 
-def request_for_row(
+def rendered_prompt(
     config: dict[str, Any], variant: dict[str, Any], row: dict[str, Any], schema: dict[str, Any] | None = None
-) -> dict[str, Any]:
+) -> str:
     if schema is None and variant.get("validation", {}).get("schema"):
         schema = variant_schema(config, variant)
     values = {
@@ -804,9 +805,19 @@ def request_for_row(
         "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
         "output_schema": json.dumps(schema or {}, sort_keys=True),
     }
+    content = prompt(config, variant["prompts"], values)
+    if variant["request_mode"] == "candidate_logprobs":
+        content += "\n\nAnswer with exactly one candidate token:"
+    return content
+
+
+def request_for_row(
+    config: dict[str, Any], variant: dict[str, Any], row: dict[str, Any], schema: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    content = rendered_prompt(config, variant, row, schema)
     body: dict[str, Any] = {
         "model": config["model"]["name"],
-        "messages": [{"role": "user", "content": prompt(config, variant["prompts"], values)}],
+        "messages": [{"role": "user", "content": content}],
         "temperature": 0,
     }
     if variant["request_mode"] == "candidate_logprobs":
@@ -889,12 +900,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
             row_id = str(row[config["input"]["id_column"]])
             if (variant["id"], row_id) in complete:
                 continue
-            values = {
-                "text": row[config["input"]["text_column"]],
-                "row_id": row_id,
-                "output_schema": json.dumps(schema or {}, sort_keys=True),
-            }
-            current_prompt = prompt(config, variant["prompts"], values)
+            current_prompt = rendered_prompt(config, variant, row, schema)
             raw, batch_error, observed = _batch_text(responses.get(f"{variant['id']}:{row_id}", {}))
             parsed, errors = (
                 validate_response(raw or "", schema)
