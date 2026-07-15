@@ -3,6 +3,7 @@
 import argparse
 import csv
 import json
+
 from vllm import LLM, SamplingParams
 from vllm.sampling_params import StructuredOutputsParams
 
@@ -11,16 +12,41 @@ MODELS = {
     "2b": "cyankiwi/Qwen3.5-2B-AWQ-4bit",
 }
 
-MFT_LABELS = ["care", "harm", "fairness", "cheating", "loyalty", "betrayal",
-               "authority", "subversion", "sanctity", "degradation"]
+MFT_LABELS = [
+    "care",
+    "harm",
+    "fairness",
+    "cheating",
+    "loyalty",
+    "betrayal",
+    "authority",
+    "subversion",
+    "sanctity",
+    "degradation",
+]
 
-SHVT_LABELS = ["self_direction_thought", "self_direction_action", "stimulation",
-               "hedonism", "achievement", "power_dominance", "power_resources",
-               "face", "security_personal", "security_societal", "tradition",
-               "conformity_rules", "conformity_interpersonal", "humility",
-               "benevolence_caring", "benevolence_dependability",
-               "universalism_concern", "universalism_nature",
-               "universalism_tolerance", "universalism_objectivity"]
+SHVT_LABELS = [
+    "self_direction_thought",
+    "self_direction_action",
+    "stimulation",
+    "hedonism",
+    "achievement",
+    "power_dominance",
+    "power_resources",
+    "face",
+    "security_personal",
+    "security_societal",
+    "tradition",
+    "conformity_rules",
+    "conformity_interpersonal",
+    "humility",
+    "benevolence_caring",
+    "benevolence_dependability",
+    "universalism_concern",
+    "universalism_nature",
+    "universalism_tolerance",
+    "universalism_objectivity",
+]
 
 SYSTEM_TEMPLATE = """\
 You are an expert annotator of moral/value content in text.
@@ -45,6 +71,7 @@ IMPORTANT: Provide only the final answer. Do not include reasoning steps, chain-
 
 
 def build_json_schema(labels: list[str]) -> dict:
+    """Build a JSON schema for vLLM structured outputs mapping each label to a score between 0 and 100."""
     return {
         "type": "object",
         "properties": {
@@ -61,29 +88,32 @@ def build_json_schema(labels: list[str]) -> dict:
 
 
 def load_sentences(path: str, n: int | None = None) -> list[str]:
+    """Load the first column from a CSV file (skipping the header) up to n sentences."""
     sentences = []
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
-        next(reader)  # skip header
+        next(reader, None)  # skip header safely
         for row in reader:
-            sentences.append(row[0])
+            if row:
+                sentences.append(row[0])
             if n and len(sentences) >= n:
                 break
     return sentences
 
 
 def main():
+    """Parse command line arguments and execute the sentence annotation workflow using local vLLM."""
     parser = argparse.ArgumentParser(description="Annotate sentences with MFT/SHVT scores via vLLM.")
-    parser.add_argument("--model", choices=list(MODELS.keys()), default="0.8b",
-                        help="Model size to use (default: 0.8b)")
-    parser.add_argument("--task", choices=["mft", "shvt"], default="mft",
-                        help="Label set (default: mft)")
-    parser.add_argument("--csv", default="v2_3m_final_clean_text.csv",
-                        help="Input CSV path")
-    parser.add_argument("-n", type=int, default=10,
-                        help="Number of sentences to process (default: 10)")
-    parser.add_argument("-o", "--output", default=None,
-                        help="Output JSONL path (default: results_<task>_<model>.jsonl)")
+
+    parser.add_argument(
+        "--model", choices=list(MODELS.keys()), default="0.8b", help="Model size to use (default: 0.8b)"
+    )
+    parser.add_argument("--task", choices=["mft", "shvt"], default="mft", help="Label set (default: mft)")
+    parser.add_argument("--csv", default="v2_3m_final_clean_text.csv", help="Input CSV path")
+    parser.add_argument("-n", type=int, default=10, help="Number of sentences to process (default: 10)")
+    parser.add_argument(
+        "-o", "--output", default=None, help="Output JSONL path (default: results_<task>_<model>.jsonl)"
+    )
     args = parser.parse_args()
 
     labels = MFT_LABELS if args.task == "mft" else SHVT_LABELS
@@ -111,11 +141,7 @@ def main():
     )
     sampling = SamplingParams(temperature=0, max_tokens=128, structured_outputs=structured)
 
-    conversations = [
-        [{"role": "system", "content": system_prompt},
-         {"role": "user", "content": s}]
-        for s in sentences
-    ]
+    conversations = [[{"role": "system", "content": system_prompt}, {"role": "user", "content": s}] for s in sentences]
 
     outputs = llm.chat(conversations, sampling)
 

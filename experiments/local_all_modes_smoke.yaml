@@ -21,6 +21,12 @@ model:
   enable_prefix_caching: true
   language_model_only: true
   synchronize_cuda: false
+resources:
+  cpu:
+    cores: auto
+    reserve_cores: 2
+    affinity: true
+    thread_pool_size: 1
 variants:
   - id: single_label_json
     request_mode: generate

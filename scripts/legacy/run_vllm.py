@@ -17,9 +17,7 @@ vllm serve Qwen/Qwen3.5-0.8B \
   --enforce-eager
 
 Run the following command to annotate a sentence:
-python run_vllm.py   --input_csv v2_3m_final_clean_text.csv   --row_number 20000   --prompt_md prompt_examples.md   --promp
-t_type MFT   --output_file outputs/row20000_mft.json   --model_name Qwen/Qwen3.5-0.8B  
- --base_url http://127.0.0.1:8001/v1   --max_tokens 128
+python run_vllm.py --input_csv v2_3m_final_clean_text.csv --row_number 20000 --prompt_md prompt_examples.md --prompt_type MFT --output_file outputs/row20000_mft.json --model_name Qwen/Qwen3.5-0.8B --base_url http://127.0.0.1:8001/v1 --max_tokens 128
 
 """
 
@@ -42,8 +40,16 @@ MFT_SCHEMA = {
                 "degradation": {"type": "integer", "minimum": 0, "maximum": 100},
             },
             "required": [
-                "care", "harm", "fairness", "cheating", "loyalty",
-                "betrayal", "authority", "subversion", "sanctity", "degradation"
+                "care",
+                "harm",
+                "fairness",
+                "cheating",
+                "loyalty",
+                "betrayal",
+                "authority",
+                "subversion",
+                "sanctity",
+                "degradation",
             ],
             "additionalProperties": False,
         }
@@ -80,13 +86,26 @@ SHVT_SCHEMA = {
                 "universalism_objectivity": {"type": "integer", "minimum": 0, "maximum": 100},
             },
             "required": [
-                "self_direction_thought", "self_direction_action", "stimulation",
-                "hedonism", "achievement", "power_dominance", "power_resources",
-                "face", "security_personal", "security_societal", "tradition",
-                "conformity_rules", "conformity_interpersonal", "humility",
-                "benevolence_caring", "benevolence_dependability",
-                "universalism_concern", "universalism_nature",
-                "universalism_tolerance", "universalism_objectivity"
+                "self_direction_thought",
+                "self_direction_action",
+                "stimulation",
+                "hedonism",
+                "achievement",
+                "power_dominance",
+                "power_resources",
+                "face",
+                "security_personal",
+                "security_societal",
+                "tradition",
+                "conformity_rules",
+                "conformity_interpersonal",
+                "humility",
+                "benevolence_caring",
+                "benevolence_dependability",
+                "universalism_concern",
+                "universalism_nature",
+                "universalism_tolerance",
+                "universalism_objectivity",
             ],
             "additionalProperties": False,
         }
@@ -119,6 +138,7 @@ def extract_prompt_from_markdown(md_text: str, prompt_type: str) -> str:
 
 
 def get_schema(prompt_type: str) -> dict:
+    """Return the JSON schema matching the prompt_type (either MFT or SHVT)."""
     prompt_type = prompt_type.upper()
     if prompt_type == "MFT":
         return MFT_SCHEMA
@@ -134,7 +154,7 @@ def get_sentence_from_csv(input_csv: str, row_number: int) -> str:
       - row_number=1 -> first sentence after the header/first row
       - row_number=2 -> second sentence after the header/first row
     """
-    with open(input_csv, "r", encoding="utf-8", newline="") as f:
+    with open(input_csv, encoding="utf-8", newline="") as f:
         reader = csv.reader(f)
 
         # Skip first row
@@ -161,6 +181,7 @@ def call_model(
     temperature: float,
     guided_json_schema: dict | None = None,
 ) -> str:
+    """Send a chat completion request to the OpenAI-compatible vLLM server."""
     extra_body = {}
     if guided_json_schema is not None:
         extra_body["structured_outputs"] = {"json": guided_json_schema}
@@ -180,24 +201,25 @@ def call_model(
 
 
 def main():
+    """Parse command line arguments, query the vLLM server to annotate a sentence, and write results to JSON."""
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--input_csv", required=True, help="Path to the input CSV")
-    parser.add_argument("--row_number", type=int, required=True,
-                        help="1-based row among data rows AFTER skipping the first row")
+    parser.add_argument(
+        "--row_number", type=int, required=True, help="1-based row among data rows AFTER skipping the first row"
+    )
     parser.add_argument("--prompt_md", required=True, help="Path to prompt_examples.md")
     parser.add_argument("--prompt_type", choices=["MFT", "SHVT"], default="MFT")
     parser.add_argument("--output_file", required=True, help="Path to output JSON file")
     parser.add_argument("--model_name", required=True, help="Model name/path served by vLLM")
-    parser.add_argument("--base_url", default="http://localhost:8001/v1",
-                        help="vLLM OpenAI-compatible server URL")
+    parser.add_argument("--base_url", default="http://localhost:8001/v1", help="vLLM OpenAI-compatible server URL")
     parser.add_argument("--max_tokens", type=int, default=64)
     parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--disable_guided_json", action="store_true",
-                        help="Disable vLLM guided_json structured output")
+    parser.add_argument("--disable_guided_json", action="store_true", help="Disable vLLM guided_json structured output")
 
     args = parser.parse_args()
 
-    with open(args.prompt_md, "r", encoding="utf-8") as f:
+    with open(args.prompt_md, encoding="utf-8") as f:
         md_text = f.read()
 
     system_prompt = extract_prompt_from_markdown(md_text, args.prompt_type)

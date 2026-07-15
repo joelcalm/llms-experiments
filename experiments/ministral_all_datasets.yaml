@@ -75,12 +75,35 @@ datasets:
 model:
   name: mistralai/Ministral-3-3B-Instruct-2512
   backend: local_vllm
+  # Leave CUDA-graph workspace on this 8 GB GPU while still using most VRAM.
   gpu_memory_utilization: 0.90
   max_model_len: 2048
   max_num_seqs: 64
   enable_prefix_caching: true
   language_model_only: true
+  # Required by Mistral's vLLM launch contract for this FP8 multimodal model.
+  tokenizer_mode: mistral
+  config_format: mistral
+  load_format: mistral
+  # RTX 50-series (SM 12.x) must avoid FlashInfer's older FP8 JIT path;
+  # vLLM falls back to its packaged CUTLASS kernel instead.
+  vllm_environment:
+    VLLM_DISABLED_KERNELS: FlashInferFP8ScaledMMLinearKernel
   synchronize_cuda: false
+  # Use vLLM's default CUDA-graph/compilation path for sustained throughput.
+  # The CPU guard below still reserves four logical CPUs for the desktop.
+
+resources:
+  cpu:
+    # On a 20-logical-CPU laptop this confines vLLM and every child worker to
+    # 16 CPUs, leaving four for the OS.  Set cores: all only for a dedicated
+    # machine, or use an explicit integer for a stricter cap.
+    cores: auto
+    reserve_cores: 4
+    affinity: true
+    # Prevent BLAS, Torch, and tokenizer pools from multiplying inside each
+    # vLLM worker. CPU affinity supplies process-level parallelism instead.
+    thread_pool_size: 1
 
 variants:
   - id: single_label_json

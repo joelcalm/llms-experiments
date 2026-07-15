@@ -98,7 +98,9 @@ SHVT_LABELS = [
 
 
 def extract_prompt_from_markdown(md_text: str, prompt_type: str) -> str:
+    """Extract prompt text nested under markdown headings for MFT or SHVT."""
     prompt_type = prompt_type.upper()
+
     if prompt_type == "MFT":
         pattern = r"## MFT.*?```text\n(.*?)```"
     elif prompt_type == "SHVT":
@@ -115,7 +117,9 @@ def extract_prompt_from_markdown(md_text: str, prompt_type: str) -> str:
 
 
 def parse_one_label_json(raw_text: str, valid_labels: set[str]) -> tuple[bool, str, str]:
+    """Parse JSON containing a value_id key and validate it against the allowed label set."""
     text = (raw_text or "").strip()
+
     if not text:
         return False, "parse_error", "empty_response"
 
@@ -147,6 +151,7 @@ def parse_one_label_json(raw_text: str, valid_labels: set[str]) -> tuple[bool, s
 
 
 def build_one_label_json_schema(labels: list[str]) -> dict[str, Any]:
+    """Build a JSON schema constraint for structured outputs requesting a single value_id."""
     return {
         "type": "object",
         "properties": {
@@ -161,16 +166,21 @@ def build_one_label_json_schema(labels: list[str]) -> dict[str, Any]:
 
 
 def canonicalize_label(label: str) -> str:
+    """Normalize a label string and map it to its canonical form via LABEL_ALIASES."""
     normalized = label.strip()
+
     return LABEL_ALIASES.get(normalized, normalized)
 
 
 def safe_divide(numerator: float, denominator: float) -> float:
+    """Perform division returning 0.0 if the denominator is zero."""
     return numerator / denominator if denominator else 0.0
 
 
 def write_one_label_metrics(output_csv: Path, labels: list[str], run_name: str) -> None:
+    """Calculate and write accuracy, macro/weighted F1, confusion matrix, and classification report."""
     y_true: list[str] = []
+
     y_pred: list[str] = []
 
     with output_csv.open("r", encoding="utf-8", newline="") as f:
@@ -189,9 +199,10 @@ def write_one_label_metrics(output_csv: Path, labels: list[str], run_name: str) 
     ordered_labels: list[str] = []
     appearing = set(y_true) | set(y_pred)
     for label in labels:
-        ordered_labels.append(label)
+        if label not in ordered_labels:
+            ordered_labels.append(label)
     for label in ["none", "parse_error", "invalid_label"]:
-        if label in appearing:
+        if label in appearing and label not in ordered_labels:
             ordered_labels.append(label)
     ordered_labels.extend(sorted(appearing - set(ordered_labels)))
 
@@ -224,9 +235,7 @@ def write_one_label_metrics(output_csv: Path, labels: list[str], run_name: str) 
     macro_precision = safe_divide(sum(float(row["precision"]) for row in report_rows), len(report_rows))
     macro_recall = safe_divide(sum(float(row["recall"]) for row in report_rows), len(report_rows))
     macro_f1 = safe_divide(sum(float(row["f1"]) for row in report_rows), len(report_rows))
-    weighted_precision = safe_divide(
-        sum(float(row["precision"]) * int(row["support"]) for row in report_rows), total
-    )
+    weighted_precision = safe_divide(sum(float(row["precision"]) * int(row["support"]) for row in report_rows), total)
     weighted_recall = safe_divide(sum(float(row["recall"]) * int(row["support"]) for row in report_rows), total)
     weighted_f1 = safe_divide(sum(float(row["f1"]) * int(row["support"]) for row in report_rows), total)
 
@@ -264,6 +273,7 @@ def write_one_label_metrics(output_csv: Path, labels: list[str], run_name: str) 
 
 
 def load_structured_outputs_params_class() -> Any | None:
+    """Dynamically import and return the StructuredOutputsParams class from vllm if available."""
     try:
         module = importlib.import_module("vllm.sampling_params")
         return getattr(module, "StructuredOutputsParams", None)
@@ -272,6 +282,7 @@ def load_structured_outputs_params_class() -> Any | None:
 
 
 def detect_csv_dialect(csv_path: Path) -> csv.Dialect:
+    """Sniff a sample of the CSV file to detect its dialect and delimiter."""
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         sample = f.read(8192)
     try:
@@ -281,6 +292,7 @@ def detect_csv_dialect(csv_path: Path) -> csv.Dialect:
 
 
 def count_completed_rows(out_csv: Path) -> int:
+    """Return the number of data rows already written to the output CSV file."""
     if not out_csv.exists() or out_csv.stat().st_size == 0:
         return 0
     with out_csv.open("r", encoding="utf-8", newline="") as f:
@@ -290,7 +302,9 @@ def count_completed_rows(out_csv: Path) -> int:
 
 
 def is_context_overflow_error(exc: Exception) -> bool:
+    """Check if an exception indicates a context length/token limit overflow error."""
     msg = str(exc).lower()
+
     return (
         "maximum context length" in msg
         or "parameter=input_tokens" in msg
@@ -299,6 +313,7 @@ def is_context_overflow_error(exc: Exception) -> bool:
 
 
 def chat_token_len(tokenizer: Any, system_prompt: str, sentence: str) -> int:
+    """Compute the exact token length of the chat conversation formatted with the system prompt."""
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": sentence},
@@ -318,7 +333,9 @@ def truncate_sentence_to_fit(
     max_model_len: int,
     reserve_tokens: int,
 ) -> tuple[str, bool]:
+    """Truncate a user sentence using binary search to fit within the model's max token length."""
     target_len = max(1, int(max_model_len) - max(0, int(reserve_tokens)))
+
     current_len = chat_token_len(tokenizer, system_prompt, sentence)
     if current_len <= target_len:
         return sentence, False
@@ -357,13 +374,16 @@ def truncate_sentence_to_fit(
 
 
 def apply_runtime_preset(args: argparse.Namespace) -> None:
+    """Overlay settings from the chosen runtime profile onto the parsed arguments."""
     preset = RUNTIME_PRESETS[args.runtime_profile]
+
     for key, value in preset.items():
         if getattr(args, key) is None:
             setattr(args, key, value)
 
 
 def main() -> int:
+    """Parse command line arguments, load the local vLLM model, and stream batch inference over the CSV."""
     ap = argparse.ArgumentParser(description="Local GPU one-label CSV classification with vLLM")
 
     ap.add_argument("--input-csv", default="protoethosv2_3m_finalqc_20260512.csv", help="Input CSV path")
@@ -510,7 +530,8 @@ def main() -> int:
         max_tokens_from_base = max(1, runtime_max_model_len - base_prompt_tokens - 8)
         if effective_max_tokens > max_tokens_from_base:
             print(
-                f"WARNING: reducing max_tokens {effective_max_tokens} -> {max_tokens_from_base} to fit context budget.")
+                f"WARNING: reducing max_tokens {effective_max_tokens} -> {max_tokens_from_base} to fit context budget."
+            )
             effective_max_tokens = max_tokens_from_base
         runtime_reserve_tokens = max(runtime_reserve_tokens, effective_max_tokens)
 
@@ -589,9 +610,7 @@ def main() -> int:
             "value_id": true_value_id,
             "predicted_value_id": predicted_value_id,
             "parse_ok": "1" if parse_ok else "0",
-            "correct": "1"
-            if canonicalize_label(true_value_id) == canonicalize_label(predicted_value_id)
-            else "0",
+            "correct": "1" if canonicalize_label(true_value_id) == canonicalize_label(predicted_value_id) else "0",
         }
         writer.writerow(row_out)
         total_written += 1
@@ -696,7 +715,10 @@ def main() -> int:
         process_batch(rows[:mid], writer)
         process_batch(rows[mid:], writer)
 
-    with input_csv.open("r", encoding="utf-8", newline="") as in_f, output_csv.open("a", encoding="utf-8", newline="") as out_f:
+    with (
+        input_csv.open("r", encoding="utf-8", newline="") as in_f,
+        output_csv.open("a", encoding="utf-8", newline="") as out_f,
+    ):
         reader = csv.DictReader(in_f, dialect=dialect)
         if not reader.fieldnames:
             print("ERROR: input CSV has no header", file=sys.stderr)

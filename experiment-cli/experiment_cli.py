@@ -23,6 +23,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -63,8 +64,35 @@ TOKEN = re.compile(
 UNRESOLVED_TOKEN = re.compile(r"{{\s*[^{}]+\s*}}")
 
 
+def aggregate_candidate_logprobs(raw_logprobs: list[tuple[str, float]], candidates: list[Any]) -> dict[str, float]:
+    """Aggregate token logprobs by stripping whitespace and summing probabilities.
+
+    If multiple tokens strip to the same candidate string (e.g. ' A' and 'A'),
+    we aggregate their logprobs using logsumexp to avoid underflow/overflow.
+    """
+    import math
+
+    grouped: dict[str, list[float]] = {}
+    for token, logprob in raw_logprobs:
+        stripped = token.strip()
+        grouped.setdefault(stripped, []).append(logprob)
+
+    aggregated: dict[str, float] = {}
+    for stripped, logprobs in grouped.items():
+        if len(logprobs) == 1:
+            aggregated[stripped] = logprobs[0]
+        else:
+            max_lp = max(logprobs)
+            sum_exp = sum(math.exp(lp - max_lp) for lp in logprobs)
+            aggregated[stripped] = max_lp + math.log(sum_exp)
+
+    return {candidate: aggregated.get(str(candidate).strip(), -float("inf")) for candidate in candidates}
+
+
 def resolve(config: dict[str, Any], value: str | Path) -> Path:
+    """Resolve path relative to project root or expand environment variables."""
     expanded = os.path.expandvars(str(value))
+
     # Configs are portable between local machines and shared GPU environments.
     # When the optional TFM_ROOT variable is not set locally, infer it from the
     # repository layout instead of leaving a literal ``${TFM_ROOT}`` path.
@@ -74,8 +102,25 @@ def resolve(config: dict[str, Any], value: str | Path) -> Path:
     return path if path.is_absolute() else Path(config["_root"]) / path
 
 
+@cache
+def _read_asset(path: str) -> str:
+    """Read immutable experiment assets once per process.
+
+    Prompt fragments and schemas are static for one run.  Caching them avoids
+    reopening the same Markdown files for every row in a large streamed lane.
+    """
+    return Path(path).read_text(encoding="utf-8")
+
+
+def read_asset(config: dict[str, Any], value: str | Path) -> str:
+    """Read contents of a config asset file, caching it in memory."""
+    return _read_asset(str(resolve(config, value).resolve()))
+
+
 def _set_path(config: dict[str, Any], dotted: str, value: Any) -> None:
+    """Set a value in a nested configuration dictionary using a dotted path."""
     parts = dotted.split(".")
+
     current: Any = config
     for part in parts[:-1]:
         if isinstance(current, list):
@@ -92,7 +137,9 @@ def _set_path(config: dict[str, Any], dotted: str, value: Any) -> None:
 
 
 def load_config(path: str | Path, overrides: list[str] | None = None, *, check_files: bool = True) -> dict[str, Any]:
+    """Load and validate the YAML configuration, applying path-based overrides."""
     path = Path(path).resolve()
+
     config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(config, dict):
         raise ValueError("Experiment configuration must be a YAML mapping")
@@ -113,6 +160,7 @@ def load_config(path: str | Path, overrides: list[str] | None = None, *, check_f
 
 
 def validate_config(config: dict[str, Any], *, check_files: bool = False) -> None:
+    """Validate the structural schema and files in the experiment configuration."""
     for key in ("run", "model", "variants", "output"):
         if key not in config:
             raise ValueError(f"Missing required top-level key `{key}`")
@@ -138,6 +186,13 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
         sources = [config["input"]]
     if config["model"].get("backend") not in {"local_vllm", "fake"}:
         raise ValueError("model.backend must be local_vllm or fake")
+    vllm_environment = config["model"].get("vllm_environment", {})
+    if not isinstance(vllm_environment, dict):
+        raise ValueError("model.vllm_environment must be a mapping")
+    if any(not isinstance(key, str) or not key.startswith("VLLM_") for key in vllm_environment):
+        raise ValueError("model.vllm_environment keys must start with VLLM_")
+    if any(not isinstance(value, (str, int, float, bool)) for value in vllm_environment.values()):
+        raise ValueError("model.vllm_environment values must be scalar")
     seen: set[str] = set()
     for variant in config["variants"]:
         identifier = variant.get("id")
@@ -163,6 +218,29 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
         raise ValueError("benchmark.approaches must contain api, run-batch, or python")
     if int(benchmark_config.get("rows", 1)) < 1:
         raise ValueError("benchmark.rows must be positive")
+    resources = config.get("resources", {})
+    if not isinstance(resources, dict):
+        raise ValueError("resources must be a mapping")
+    cpu = resources.get("cpu", {})
+    if not isinstance(cpu, dict):
+        raise ValueError("resources.cpu must be a mapping")
+    cores = cpu.get("cores", "auto")
+    if cores not in {"auto", "all"} and (isinstance(cores, bool) or not isinstance(cores, int) or cores < 1):
+        raise ValueError("resources.cpu.cores must be auto, all, or a positive integer")
+    if (
+        isinstance(cpu.get("reserve_cores", 2), bool)
+        or not isinstance(cpu.get("reserve_cores", 2), int)
+        or int(cpu.get("reserve_cores", 2)) < 0
+    ):
+        raise ValueError("resources.cpu.reserve_cores must be a non-negative integer")
+    if (
+        isinstance(cpu.get("thread_pool_size", 1), bool)
+        or not isinstance(cpu.get("thread_pool_size", 1), int)
+        or int(cpu.get("thread_pool_size", 1)) < 1
+    ):
+        raise ValueError("resources.cpu.thread_pool_size must be a positive integer")
+    if not isinstance(cpu.get("affinity", True), bool):
+        raise ValueError("resources.cpu.affinity must be a boolean")
     if check_files:
         paths = []
         for source in sources:
@@ -185,6 +263,7 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
 
 
 def _validate_source(source: dict[str, Any], name: str) -> None:
+    """Validate file format and mandatory columns for a dataset source definition."""
     for key in ("path", "format", "id_column", "text_column"):
         if not source.get(key):
             raise ValueError(f"{name}.{key} is required")
@@ -195,6 +274,7 @@ def _validate_source(source: dict[str, Any], name: str) -> None:
 
 
 def _split_labels(value: Any) -> list[str]:
+    """Parse labels from string, comma-separated string, JSON list, or list format."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -217,6 +297,7 @@ def read_rows(
     text_column: str,
     source: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    """Read dataset rows according to format (CSV, TSV, JSONL, Parquet, or nested JSON)."""
     source = source or {
         "path": str(path),
         "format": data_format,
@@ -294,12 +375,14 @@ def read_rows(
 
 
 def dataset_entries(config: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return all dataset IDs and input sources defined in the configuration."""
     if "datasets" not in config:
         return [(str(config.get("run", {}).get("dataset_id", "default")), config["input"])]
     return [(str(item["id"]), item.get("input", item)) for item in config["datasets"]]
 
 
 def dataset_runtime(source: dict[str, Any]) -> dict[str, Any]:
+    """Extract runtime configuration parameters for a specific dataset source."""
     return {
         "dataset_labels": list(source.get("labels", [])),
         "code_labels": dict(source.get("code_labels", {})),
@@ -309,6 +392,7 @@ def dataset_runtime(source: dict[str, Any]) -> dict[str, Any]:
 
 
 def select_dataset(config: dict[str, Any], dataset_id: str) -> dict[str, Any]:
+    """Filter and return the configuration for a single selected dataset."""
     for identifier, source in dataset_entries(config):
         if identifier == dataset_id:
             selected = deepcopy(config)
@@ -327,11 +411,14 @@ def select_dataset(config: dict[str, Any], dataset_id: str) -> dict[str, Any]:
 
 
 def require_single_input(config: dict[str, Any], command: str) -> None:
+    """Enforce that the configuration contains a single dataset, not a list of datasets."""
     if "datasets" in config:
         raise ValueError(f"{command} requires one input; use --dataset or {command}-matrix for a matrix config")
 
 
 def rows_for_source(config: dict[str, Any], source: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+    """Read all (or up to limit) rows for a specified source definition."""
+
     resolved_source = dict(source)
     if resolved_source.get("format") == "paired_tsv" and resolved_source.get("labels_path"):
         resolved_source["labels_path"] = str(resolve(config, resolved_source["labels_path"]))
@@ -395,16 +482,21 @@ def iter_rows_for_source(config: dict[str, Any], source: dict[str, Any], limit: 
 
 
 def row_key(row: dict[str, Any], config: dict[str, Any]) -> tuple[str, int]:
+    """Construct a unique identifier tuple key for a dataset row."""
     return (str(row[config["input"]["id_column"]]), int(row["_source_position"]))
 
 
 def saved_position(row: dict[str, Any]) -> int:
+    """Get the source position of a saved result row, returning -1 if missing."""
     value = row.get("source_position")
+
     return -1 if value is None else int(value)
 
 
 def source_provenance(config: dict[str, Any]) -> dict[str, Any]:
+    """Generate metadata provenance mapping for the input dataset file(s)."""
     source = config["input"]
+
     paths = [resolve(config, source["path"])]
     if source.get("format") == "paired_tsv":
         paths.append(resolve(config, source["labels_path"]))
@@ -419,7 +511,9 @@ def source_provenance(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def render(template: str, values: dict[str, Any]) -> str:
+    """Substitute placeholder tokens inside a prompt template string."""
     rendered = TOKEN.sub(lambda match: str(values.get(match.group(1), "")), template)
+
     unresolved = UNRESOLVED_TOKEN.search(rendered)
     if unresolved:
         raise ValueError(f"Unsupported or unresolved prompt placeholder: {unresolved.group(0)}")
@@ -427,7 +521,8 @@ def render(template: str, values: dict[str, Any]) -> str:
 
 
 def prompt(config: dict[str, Any], paths: list[str], values: dict[str, Any]) -> str:
-    return "\n\n".join(render(resolve(config, path).read_text(encoding="utf-8").strip(), values) for path in paths)
+    """Assemble a full prompt by reading and rendering multiple markdown asset paths."""
+    return "\n\n".join(render(read_asset(config, path).strip(), values) for path in paths)
 
 
 def prompt_part_values(config: dict[str, Any], values: dict[str, Any] | None = None) -> dict[str, str]:
@@ -440,13 +535,15 @@ def prompt_part_values(config: dict[str, Any], values: dict[str, Any] | None = N
     rendered_values: dict[str, Any] = dict(values or {})
     parts: dict[str, str] = {}
     for name, path in config.get("run", {}).get("prompt_parts", {}).items():
-        raw = resolve(config, path).read_text(encoding="utf-8").strip()
+        raw = read_asset(config, path).strip()
         parts[str(name)] = render(raw, {**rendered_values, **parts})
     return parts
 
 
 def check_schema(value: Any, schema: dict[str, Any], path: str, errors: list[str]) -> None:
+    """Recursively validate a value against a JSON Schema, appending error strings."""
     expected = schema.get("type")
+
     matches = {
         "object": isinstance(value, dict),
         "array": isinstance(value, list),
@@ -479,6 +576,7 @@ def check_schema(value: Any, schema: dict[str, Any], path: str, errors: list[str
 
 
 def validate_response(raw: str, schema: dict[str, Any] | None) -> tuple[Any | None, list[str]]:
+    """Parse a raw response as JSON and validate it against the optional schema."""
     if schema is None:
         return raw, []
     try:
@@ -492,7 +590,9 @@ def validate_response(raw: str, schema: dict[str, Any] | None) -> tuple[Any | No
 
 class Events:
     def __init__(self, log_path: Path, event_path: Path, level: str) -> None:
+        """Initialize the event logger to write both logs and events to files."""
         log_path.parent.mkdir(parents=True, exist_ok=True)
+
         event_path.parent.mkdir(parents=True, exist_ok=True)
         self.path = event_path
         self.logger = logging.getLogger(f"experiment-cli.{event_path}")
@@ -503,13 +603,16 @@ class Events:
         self.logger.addHandler(handler)
 
     def emit(self, event: str, **payload: Any) -> None:
+        """Emit a structured event record to the event file and log output."""
         record = {"timestamp": time.time(), "event": event, **payload}
+
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
         self.logger.info("%s %s", event, json.dumps(payload, sort_keys=True))
 
 
 def gpu() -> dict[str, Any]:
+    """Query local GPU usage metrics (memory, utilization) using nvidia-smi and torch."""
     try:
         line = (
             subprocess.check_output(
@@ -547,7 +650,40 @@ def gpu() -> dict[str, Any]:
         return {"available": False, "error": str(exc)}
 
 
+def gpu_preflight() -> dict[str, Any]:
+    """Verify both the host driver and the uv-managed CUDA Python stack."""
+    nvidia_smi = gpu()
+    report: dict[str, Any] = {
+        "ready": False,
+        "nvidia_smi": nvidia_smi,
+        "device_nodes": [str(path) for path in sorted(Path("/dev").glob("nvidia*"))],
+    }
+    try:
+        import torch
+
+        cuda_available = bool(torch.cuda.is_available())
+        torch_report: dict[str, Any] = {
+            "version": torch.__version__,
+            "cuda_version": torch.version.cuda,
+            "cuda_available": cuda_available,
+            "device_count": torch.cuda.device_count() if cuda_available else 0,
+        }
+        if cuda_available:
+            torch_report["device_name"] = torch.cuda.get_device_name(0)
+        report["torch"] = torch_report
+    except Exception as exc:
+        report["torch"] = {"cuda_available": False, "error": str(exc)}
+    report["ready"] = bool(nvidia_smi.get("available") and report["torch"].get("cuda_available"))
+    if not report["ready"]:
+        report["remediation"] = (
+            "uv installs CUDA user-space libraries, not the kernel driver. Repair the host NVIDIA driver and "
+            "ensure /dev/nvidia* is exposed, then rerun this preflight."
+        )
+    return report
+
+
 def sync_cuda(enabled: bool) -> None:
+    """Block CPU execution until all ongoing CUDA kernels have completed, if enabled."""
     if enabled:
         try:
             import torch
@@ -556,6 +692,88 @@ def sync_cuda(enabled: bool) -> None:
                 torch.cuda.synchronize()
         except Exception:
             pass
+
+
+def available_cpu_ids() -> list[int]:
+    """Return CPUs available to this process, respecting a parent cgroup."""
+    if hasattr(os, "sched_getaffinity"):
+        return sorted(os.sched_getaffinity(0))
+    return list(range(os.cpu_count() or 1))
+
+
+def cpu_resource_plan(config: dict[str, Any]) -> dict[str, Any]:
+    """Resolve a bounded CPU allocation from the portable YAML settings."""
+    settings = config.get("resources", {}).get("cpu", {})
+    available = available_cpu_ids()
+    requested = settings.get("cores", "auto")
+    reserve = int(settings.get("reserve_cores", 2))
+    if requested == "all":
+        count = len(available)
+    elif requested == "auto":
+        count = max(1, len(available) - reserve)
+    else:
+        count = int(requested)
+    if count > len(available):
+        raise ValueError(f"resources.cpu.cores={count} exceeds the {len(available)} CPU(s) available to this process")
+    return {
+        "available_cpu_ids": available,
+        "cpu_ids": available[:count],
+        "requested_cores": requested,
+        "reserve_cores": reserve,
+        "thread_pool_size": int(settings.get("thread_pool_size", 1)),
+        "affinity": bool(settings.get("affinity", True)),
+    }
+
+
+def apply_resource_guard(config: dict[str, Any]) -> dict[str, Any]:
+    """Bound CPU affinity and native thread pools before vLLM starts workers.
+
+    GPU capacity remains controlled by the existing model settings.  The
+    affinity is inherited by vLLM's child processes, unlike a post-hoc monitor
+    that can only notice overload after the laptop is already unresponsive.
+    """
+    plan = cpu_resource_plan(config)
+    threads = str(plan["thread_pool_size"])
+    environment = {
+        "OMP_NUM_THREADS": threads,
+        "MKL_NUM_THREADS": threads,
+        "OPENBLAS_NUM_THREADS": threads,
+        "NUMEXPR_NUM_THREADS": threads,
+        "VECLIB_MAXIMUM_THREADS": threads,
+        "RAYON_NUM_THREADS": threads,
+        "TOKENIZERS_PARALLELISM": "false",
+    }
+    os.environ.update(environment)
+    plan["environment"] = environment
+    plan["affinity_applied"] = False
+    if plan["affinity"] and hasattr(os, "sched_setaffinity"):
+        os.sched_setaffinity(0, plan["cpu_ids"])
+        plan["affinity_applied"] = True
+    config["_resource_guard"] = plan
+    return plan
+
+
+def configure_torch_cpu_threads(resource_guard: dict[str, Any] | None) -> None:
+    """Apply the same native thread cap to PyTorch after it is imported."""
+    try:
+        import torch
+
+        threads = int((resource_guard or {})["thread_pool_size"])
+        torch.set_num_threads(threads)
+        try:
+            torch.set_num_interop_threads(threads)
+        except RuntimeError:
+            # Some torch builds initialise this pool while importing vLLM.
+            pass
+    except (ImportError, KeyError):
+        pass
+
+
+def configure_vllm_environment(model: dict[str, Any]) -> dict[str, str]:
+    """Apply explicit, portable vLLM runtime switches before importing vLLM."""
+    configured = {str(key): str(value) for key, value in model.get("vllm_environment", {}).items()}
+    os.environ.update(configured)
+    return configured
 
 
 class BackendFailure(RuntimeError):
@@ -581,9 +799,12 @@ class FakeBackend:
 
 
 class VLLMBackend:
-    def __init__(self, model: dict[str, Any]) -> None:
+    def __init__(self, model: dict[str, Any], resource_guard: dict[str, Any] | None = None) -> None:
         if not gpu().get("available"):
-            raise RuntimeError("GPU preflight failed: nvidia-smi cannot communicate with an NVIDIA driver.")
+            raise RuntimeError(
+                "GPU preflight failed: nvidia-smi cannot communicate with an NVIDIA driver. "
+                "Run `uv run python experiment-cli/experiment_cli.py gpu-preflight` for diagnostics."
+            )
         # vLLM V1 starts an EngineCore process.  CUDA must never be inherited
         # through fork after the telemetry preflight has touched torch.
         import multiprocessing as mp
@@ -593,10 +814,12 @@ class VLLMBackend:
         except RuntimeError:
             pass
         os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+        self.vllm_environment = configure_vllm_environment(model)
         try:
             from vllm import LLM, SamplingParams
         except ImportError as exc:
             raise RuntimeError("local_vllm requires vLLM; install the uv project dependencies first.") from exc
+        configure_torch_cpu_threads(resource_guard)
         self.params = SamplingParams
         llm_kwargs: dict[str, Any] = {
             "model": model["name"],
@@ -609,13 +832,28 @@ class VLLMBackend:
             llm_kwargs["language_model_only"] = bool(model["language_model_only"])
         if "limit_mm_per_prompt" in model:
             llm_kwargs["limit_mm_per_prompt"] = model["limit_mm_per_prompt"]
+        if "enforce_eager" in model:
+            llm_kwargs["enforce_eager"] = bool(model["enforce_eager"])
+        if "compilation_config" in model:
+            llm_kwargs["compilation_config"] = model["compilation_config"]
+        for option in (
+            "tokenizer_mode",
+            "config_format",
+            "load_format",
+            "quantization",
+            "dtype",
+            "tensor_parallel_size",
+            "trust_remote_code",
+        ):
+            if option in model:
+                llm_kwargs[option] = model[option]
         self.llm = LLM(
             **llm_kwargs,
         )
 
     def generate(self, prompts: list[str], variant: dict[str, Any]) -> list[Response]:
         if variant["request_mode"] == "candidate_logprobs":
-            params = self.params(temperature=0, max_tokens=1, logprobs=max(20, len(variant["candidates"]) + 5))
+            params = self.params(temperature=0, max_tokens=1, logprobs=min(20, len(variant["candidates"]) + 5))
         else:
             kwargs: dict[str, Any] = {"temperature": 0, "max_tokens": variant.get("max_tokens", 128)}
             if schema := variant.get("_schema"):
@@ -636,14 +874,11 @@ class VLLMBackend:
         for output in outputs:
             generated = output.outputs[0]
             if variant["request_mode"] == "candidate_logprobs":
-                observed = {
-                    str(getattr(logprob, "decoded_token", token)).strip(): float(getattr(logprob, "logprob", logprob))
+                raw_observed = [
+                    (str(getattr(logprob, "decoded_token", token)), float(getattr(logprob, "logprob", logprob)))
                     for token, logprob in ((generated.logprobs or [{}])[0] or {}).items()
-                }
-                scores = {
-                    candidate: observed.get(str(candidate).strip(), -float("inf"))
-                    for candidate in variant["candidates"]
-                }
+                ]
+                scores = aggregate_candidate_logprobs(raw_observed, variant["candidates"])
                 result.append(Response(json.dumps({"candidates": scores}), len(generated.token_ids), scores))
             else:
                 result.append(Response(generated.text, len(generated.token_ids)))
@@ -720,9 +955,9 @@ def prompt_group_id(config: dict[str, Any], variant: dict[str, Any], schema: dic
 def variant_config_hash(config: dict[str, Any], variant: dict[str, Any]) -> str:
     assets = {}
     for path in variant.get("prompts", []):
-        assets[str(path)] = resolve(config, path).read_text(encoding="utf-8")
+        assets[str(path)] = read_asset(config, path)
     for name, path in config.get("run", {}).get("prompt_parts", {}).items():
-        assets[f"part:{name}"] = resolve(config, path).read_text(encoding="utf-8")
+        assets[f"part:{name}"] = read_asset(config, path)
     payload = {
         "variant": variant,
         "model": config.get("model"),
@@ -894,6 +1129,7 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
     try:
         for configured_variant in config["variants"]:
             variant = materialize_variant(config, configured_variant)
+            config_hash = expected_hashes[variant["id"]]
             schema = variant_schema(config, variant)
             request_variant = {**variant, "_schema": schema}
             source_iter = iter_rows_for_source(config, config["input"], row_limit)
@@ -912,7 +1148,11 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
                 total_input = len(prefetched)
             tune_prompts = [rendered_prompt(config, variant, row, schema) for row in prefetched]
             if backend is None:
-                backend = FakeBackend() if config["model"]["backend"] == "fake" else VLLMBackend(config["model"])
+                backend = (
+                    FakeBackend()
+                    if config["model"]["backend"] == "fake"
+                    else VLLMBackend(config["model"], config.get("_resource_guard"))
+                )
                 created = True
             size, attempts = tune(
                 backend,
@@ -927,7 +1167,7 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
             selected[variant["id"]] = {"selected_batch_size": size, "prompt_group_id": group_id, "tuning": attempts}
             events.emit("variant_started", variant=variant["id"], prompt_group_id=group_id, batch_size=size)
             correction_path = config.get("validation", {}).get("retry", {}).get("correction_prompt")
-            correction = resolve(config, correction_path).read_text(encoding="utf-8") if correction_path else None
+            correction = read_asset(config, correction_path) if correction_path else None
             writer = PartWriter(run_dir, variant["id"], int(config.get("streaming", {}).get("output_chunk_rows", 4096)))
             pending_rows = itertools.chain(prefetched, source_iter)
             buffer = []
@@ -1009,7 +1249,7 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
                         else None,
                         "gold_labels": serialise(row.get("_gold_labels")),
                         "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                        "config_hash": variant_config_hash(config, variant),
+                        "config_hash": config_hash,
                         "prompt_group_id": group_id,
                         "attempt_count": attempt_count,
                         "raw_response": raw if config["output"].get("include_raw_response", True) else None,
@@ -1051,6 +1291,7 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
         "model": config["model"],
         "variants": selected,
         "streaming": True,
+        "cpu_resource_guard": config.get("_resource_guard"),
         "gpu_preflight": gpu(),
         "source_provenance": source_provenance(config),
         "resume_skipped_rows": seeded,
@@ -1062,6 +1303,8 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
 
 
 def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | None = None) -> dict[str, Any]:
+    if backend is None and config["model"].get("backend") == "local_vllm" and "_resource_guard" not in config:
+        apply_resource_guard(config)
     if config.get("streaming", {}).get("enabled", False):
         return run_streaming(config, backend, row_limit)
     run_id = config["run"]["id"]
@@ -1096,19 +1339,24 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
     selected: dict[str, Any] = dict(previous.get("variants", {}))
     created = False
     correction_path = config.get("validation", {}).get("retry", {}).get("correction_prompt")
-    correction = resolve(config, correction_path).read_text(encoding="utf-8") if correction_path else None
+    correction = read_asset(config, correction_path) if correction_path else None
     try:
         for configured_variant in config["variants"]:
             variant = materialize_variant(config, configured_variant)
+            config_hash = expected_hashes[variant["id"]]
             pending = [row for row in rows if (variant["id"], *row_key(row, config)) not in complete]
             if not pending:
                 events.emit("variant_resumed", variant=variant["id"], skipped=len(rows))
                 continue
             if backend is None:
-                backend = FakeBackend() if config["model"]["backend"] == "fake" else VLLMBackend(config["model"])
+                backend = (
+                    FakeBackend()
+                    if config["model"]["backend"] == "fake"
+                    else VLLMBackend(config["model"], config.get("_resource_guard"))
+                )
                 created = True
             schema_path = variant.get("validation", {}).get("schema")
-            schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+            schema = json.loads(read_asset(config, schema_path)) if schema_path else None
             request_variant = {**variant, "_schema": schema}
             prompts = [rendered_prompt(config, variant, row, schema) for row in pending]
             group_id = prompt_group_id(config, variant, schema)
@@ -1198,7 +1446,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
                             else None,
                             "gold_labels": serialise(row.get("_gold_labels")),
                             "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                            "config_hash": variant_config_hash(config, variant),
+                            "config_hash": config_hash,
                             "prompt_group_id": group_id,
                             "attempt_count": count,
                             "raw_response": raw if config["output"].get("include_raw_response", True) else None,
@@ -1238,6 +1486,7 @@ def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | Non
         "result_rows": len(existing),
         "model": config["model"],
         "variants": selected,
+        "cpu_resource_guard": config.get("_resource_guard"),
         "gpu_preflight": gpu(),
         "source_provenance": source_provenance(config),
         "resume_skipped_rows": len(complete),
@@ -1254,6 +1503,8 @@ def run_matrix(
     """Run every configured dataset with one shared backend/model process."""
     if "datasets" not in config:
         return {"datasets": [run(config, row_limit=row_limit)]}
+    if config["model"].get("backend") == "local_vllm" and "_resource_guard" not in config:
+        apply_resource_guard(config)
     base_output = resolve(config, config["output"]["directory"])
     entries = dataset_entries(config)
     if selected:
@@ -1262,7 +1513,11 @@ def run_matrix(
         missing = wanted - {identifier for identifier, _ in entries}
         if missing:
             raise ValueError(f"Unknown dataset id(s): {', '.join(sorted(missing))}")
-    shared = FakeBackend() if config["model"].get("backend") == "fake" else VLLMBackend(config["model"])
+    shared = (
+        FakeBackend()
+        if config["model"].get("backend") == "fake"
+        else VLLMBackend(config["model"], config.get("_resource_guard"))
+    )
     manifests: list[dict[str, Any]] = []
     try:
         for dataset_id, source in entries:
@@ -1291,6 +1546,7 @@ def run_matrix(
     summary = {
         "run_id": config["run"]["id"],
         "model": config["model"],
+        "cpu_resource_guard": config.get("_resource_guard"),
         "datasets": manifests,
         "result_rows": sum(int(item.get("result_rows", 0)) for item in manifests),
     }
@@ -1356,7 +1612,7 @@ def prepare_matrix(config: dict[str, Any], selected: list[str] | None = None) ->
 
 def variant_schema(config: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any] | None:
     schema_path = variant.get("validation", {}).get("schema")
-    schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+    schema = json.loads(read_asset(config, schema_path)) if schema_path else None
     enum_from = variant.get("validation", {}).get("enum_from") if schema else None
     labels = list(config.get("run", {}).get("dataset_labels", []))
     if enum_from == "dataset_labels" and labels:
@@ -1453,7 +1709,7 @@ def request_for_row(
             {
                 "max_completion_tokens": 1,
                 "logprobs": True,
-                "top_logprobs": max(20, len(variant["candidates"]) + 5),
+                "top_logprobs": min(20, len(variant["candidates"]) + 5),
             }
         )
     else:
@@ -1479,7 +1735,7 @@ def build_requests(config: dict[str, Any], rows: list[dict[str, Any]]) -> list[d
     return requests
 
 
-def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, dict[str, float] | None]:
+def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, list[tuple[str, float]] | None]:
     response = item.get("response") or {}
     if item.get("error") or response.get("status_code", 200) != 200:
         return None, str(item.get("error") or response.get("status_code", "batch_response_error")), None
@@ -1487,11 +1743,11 @@ def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, dict[str,
     content = (choice.get("message") or {}).get("content")
     if content is None:
         return None, "missing_chat_completion_content", None
-    observed: dict[str, float] = {}
+    raw_observed: list[tuple[str, float]] = []
     for token in (choice.get("logprobs") or {}).get("content") or []:
         for candidate in token.get("top_logprobs") or []:
-            observed[str(candidate.get("token", "")).strip()] = float(candidate.get("logprob", -float("inf")))
-    return str(content), None, observed or None
+            raw_observed.append((str(candidate.get("token", "")), float(candidate.get("logprob", -float("inf")))))
+    return str(content), None, raw_observed or None
 
 
 def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, Any]:
@@ -1533,7 +1789,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
     }
     retry_settings = config.get("validation", {}).get("retry", {})
     correction_path = retry_settings.get("correction_prompt")
-    correction = resolve(config, correction_path).read_text(encoding="utf-8") if correction_path else None
+    correction = read_asset(config, correction_path) if correction_path else None
     retry_requests: list[dict[str, Any]] = []
 
     def add_retry_request(
@@ -1555,7 +1811,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                 {
                     "max_completion_tokens": 1,
                     "logprobs": True,
-                    "top_logprobs": max(20, len(variant.get("candidates", [])) + 5),
+                    "top_logprobs": min(20, len(variant.get("candidates", [])) + 5),
                 }
             )
         elif schema:
@@ -1574,8 +1830,9 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
 
     for configured_variant in config["variants"]:
         variant = materialize_variant(config, configured_variant)
+        config_hash = expected_hashes[variant["id"]]
         schema_path = variant.get("validation", {}).get("schema")
-        schema = json.loads(resolve(config, schema_path).read_text(encoding="utf-8")) if schema_path else None
+        schema = json.loads(read_asset(config, schema_path)) if schema_path else None
         group_id = prompt_group_id(config, variant, schema)
         for row in rows:
             row_id = str(row[config["input"]["id_column"]])
@@ -1600,10 +1857,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
             )
             scores: dict[str, float] | None = None
             if variant["request_mode"] == "candidate_logprobs" and observed is not None:
-                scores = {
-                    candidate: observed.get(str(candidate).strip(), -float("inf"))
-                    for candidate in variant["candidates"]
-                }
+                scores = aggregate_candidate_logprobs(observed, variant["candidates"])
                 parsed, errors = {"candidates": scores}, []
             attempt_count = 1
             if retry_items:
@@ -1621,10 +1875,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                     parsed, errors = validate_response(raw, schema)
                     attempt_count = int(retry_id.rsplit(":", 1)[-1])
                     if variant["request_mode"] == "candidate_logprobs" and retry_observed is not None:
-                        scores = {
-                            candidate: retry_observed.get(str(candidate).strip(), -float("inf"))
-                            for candidate in variant["candidates"]
-                        }
+                        scores = aggregate_candidate_logprobs(retry_observed, variant["candidates"])
                         parsed, errors = {"candidates": scores}, []
                 else:
                     errors = [retry_error or "missing_retry_response"]
@@ -1665,7 +1916,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                     else None,
                     "gold_labels": serialise(row.get("_gold_labels")),
                     "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                    "config_hash": variant_config_hash(config, variant),
+                    "config_hash": config_hash,
                     "prompt_group_id": group_id,
                     "attempt_count": attempt_count,
                     "raw_response": raw if config["output"].get("include_raw_response", True) else None,
@@ -1742,6 +1993,13 @@ def batch_command_args(
         command.append("--enable-prefix-caching")
     if model.get("language_model_only", False):
         command.append("--language-model-only")
+    for option, flag in (
+        ("tokenizer_mode", "--tokenizer-mode"),
+        ("config_format", "--config-format"),
+        ("load_format", "--load-format"),
+    ):
+        if option in model:
+            command.extend([flag, str(model[option])])
     return command
 
 
@@ -1754,13 +2012,15 @@ def response_from_api(completion: Any, variant: dict[str, Any]) -> Response:
     raw = str(getattr(choice.message, "content", None) or "")
     usage = getattr(completion, "usage", None)
     token_count = int(getattr(usage, "completion_tokens", 0) or 0)
-    observed: dict[str, float] = {}
+    raw_observed: list[tuple[str, float]] = []
     logprobs = getattr(choice, "logprobs", None)
     for token in getattr(logprobs, "content", None) or []:
         for candidate in getattr(token, "top_logprobs", None) or []:
-            observed[str(getattr(candidate, "token", "")).strip()] = float(getattr(candidate, "logprob", -float("inf")))
+            raw_observed.append(
+                (str(getattr(candidate, "token", "")), float(getattr(candidate, "logprob", -float("inf"))))
+            )
     if variant["request_mode"] == "candidate_logprobs":
-        scores = {candidate: observed.get(str(candidate).strip(), -float("inf")) for candidate in variant["candidates"]}
+        scores = aggregate_candidate_logprobs(raw_observed, variant["candidates"])
         return Response(json.dumps({"candidates": scores}), token_count, scores)
     return Response(raw, token_count)
 
@@ -1784,7 +2044,11 @@ def benchmark_python(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict
     if batch_size < 1 or repeats < 1 or warmup < 0:
         raise ValueError("benchmark.batch_size, repeats, and warmup_requests are invalid")
     load_started = time.perf_counter()
-    backend = FakeBackend() if config["model"].get("backend") == "fake" else VLLMBackend(config["model"])
+    backend = (
+        FakeBackend()
+        if config["model"].get("backend") == "fake"
+        else VLLMBackend(config["model"], config.get("_resource_guard"))
+    )
     load_seconds = time.perf_counter() - load_started
     entries: list[tuple[dict[str, Any], list[str]]] = []
     for variant in config["variants"]:
@@ -1919,6 +2183,7 @@ def benchmark_run_batch(config: dict[str, Any], requests: list[dict[str, Any]], 
             completed = subprocess.run(
                 command,
                 cwd=config["_root"],
+                env={**os.environ, **configure_vllm_environment(config["model"])},
                 check=True,
                 capture_output=True,
                 text=True,
@@ -2076,6 +2341,7 @@ def main() -> int:
             command.add_argument("--rows", type=int, default=None, help="Optional row limit")
         if name in {"run-matrix", "prepare-matrix"}:
             command.add_argument("--datasets", help="Comma-separated dataset ids to run (default: all)")
+    commands.add_parser("gpu-preflight", help="Verify host driver access and CUDA availability in this uv environment")
     benchmark_parser = commands.add_parser("benchmark")
     benchmark_parser.add_argument("--config", required=True)
     benchmark_parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
@@ -2099,10 +2365,15 @@ def main() -> int:
     parse.add_argument("--output")
     parse.add_argument("--dataset", help="Dataset id when using a matrix configuration")
     args = parser.parse_args()
+    if args.command == "gpu-preflight":
+        result = gpu_preflight()
+        print(json.dumps(result, indent=2))
+        return 0 if result["ready"] else 2
     config = load_config(args.config, config_overrides(args), check_files=False)
     if getattr(args, "dataset", None):
         config = select_dataset(config, args.dataset)
     validate_config(config, check_files=True)
+    apply_resource_guard(config)
     if args.command == "validate":
         print(f"Valid configuration: {config['run']['id']}")
     elif args.command == "prepare":

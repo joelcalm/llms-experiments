@@ -9,10 +9,11 @@ dependencies = [
     "pyarrow>=19.0.1",
     "pydantic>=2.13.0",
     "PyYAML>=6.0.3",
-    "vllm>=0.18.0",
-    "torch==2.10.0",
-    "torchvision==0.25.0",
-    "torchaudio==2.10.0",
+    # Ministral 3 needs the post-Transformers-v5 Mistral/Pixtral dispatch fixes.
+    "vllm>=0.20.0,<0.21.0",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "torchaudio==2.11.0",
     "transformers @ git+https://github.com/huggingface/transformers.git@10555512868d663ee1ff627e4f5c5c260114235b",
 ]
 

@@ -20,6 +20,7 @@ From the repository root, create the uv environment and run the deterministic lo
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv sync
+UV_CACHE_DIR=.uv-cache uv run python experiment-cli/experiment_cli.py gpu-preflight
 UV_CACHE_DIR=.uv-cache uv run python experiment-cli/experiment_cli.py validate \
   --config experiments/local_all_modes_smoke.yaml
 
@@ -38,9 +39,11 @@ UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python \
 UV_CACHE_DIR=.uv-cache uv sync
 ```
 
-This installs CUDA user-space libraries only; a working NVIDIA device still
-requires the host or container runtime to expose `/dev/nvidia*` and a
-compatible driver.
+`gpu-preflight` is a required GPU-installation gate: it checks both the host
+driver via `nvidia-smi` and CUDA access from uv's PyTorch environment. uv
+installs CUDA user-space libraries only; it cannot install the kernel-level
+NVIDIA driver. A failure means the host or container runtime must expose
+`/dev/nvidia*` and a compatible driver before a GPU experiment can start.
 
 ## Run locally on the GPU
 
@@ -60,6 +63,41 @@ The smoke configuration loads `Qwen/Qwen3.5-0.8B` once and runs, in sequence:
 For JSON variants, the JSON Schema is used both to constrain vLLM output and to validate the saved response. Invalid results are retried according to `validation.retry`; final failures remain in Parquet rather than being dropped.
 
 The runner tunes a batch size separately per variant. The manifest records every candidate, throughput, latency, telemetry snapshot, and selected size. Re-running a completed configuration resumes by `(variant_id, input_row_id)` and does not load a model when no rows remain.
+
+## CPU guardrails
+
+`resources.cpu` makes the host-side budget part of the experiment contract.
+Before vLLM is imported, the runner applies CPU affinity to itself; vLLM's
+engine and worker children inherit that affinity. It also caps PyTorch, BLAS,
+and tokenizer thread pools so that each child does not create another full set
+of CPU workers. GPU use remains controlled by the existing
+`model.gpu_memory_utilization` setting.
+
+```yaml
+resources:
+  cpu:
+    cores: auto          # all available CPUs except reserve_cores
+    reserve_cores: 4     # keep the laptop responsive
+    affinity: true
+    thread_pool_size: 1  # threads per native library pool
+```
+
+Use `cores: all` only on a dedicated machine. For an explicit cap, use (for
+example) `cores: 8`; it must not exceed the CPUs visible to the process. The
+chosen CPU IDs, affinity status, and thread-pool environment are recorded in
+every run and matrix manifest. All resource fields can be overridden without
+editing YAML, for example:
+
+```bash
+uv run python experiment-cli/experiment_cli.py run-matrix \
+  --config experiments/ministral_all_datasets.yaml \
+  --set resources.cpu.cores=8 --set resources.cpu.reserve_cores=0
+```
+
+The supplied Ministral matrix reserves four of the 20 logical CPUs on this
+laptop and raises vLLM's GPU allocation to 95% (leaving small driver/desktop
+headroom). Its prompt and schema assets are also cached in-process, so streamed
+rows no longer reread Markdown files or recompute their variant hash.
 
 ## Compare Python, API, and `run-batch`
 
@@ -216,6 +254,7 @@ Copy `experiments/local_all_modes_smoke.yaml`, then change only data:
 - `model`: the vLLM model and GPU limits;
 - `variants`: prompt files, schemas, or candidate strings;
 - `batch`: candidate sizes and warm-up row count;
+- `resources.cpu`: CPU affinity, reserved cores, and native thread-pool cap;
 - `output` and `logging`: ignored local destinations.
 
 When a source provides labels, result rows include the serialised

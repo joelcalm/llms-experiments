@@ -12,7 +12,7 @@
 set -euo pipefail
 
 # Usage:
-#   sbatch submit-vllm.sh [PROMPT_TYPE] [INPUT_CSV] [OUTPUT_CSV] [MODEL] [extra batch_infer_simple.py args...]
+#   sbatch slurm/submit-vllm.sh [PROMPT_TYPE] [INPUT_CSV] [OUTPUT_CSV] [MODEL] [extra batch_infer_simple.py args...]
 #
 # Defaults:
 #   PROMPT_TYPE=MFT
@@ -21,8 +21,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# CODE_DIR: where the runnable project lives: batch_infer_simple.py, sample_csv_deterministic.py, myenv, etc.
-CODE_DIR="${CODE_DIR:-${SLURM_SUBMIT_DIR:-$ROOT_DIR}}"
+# CODE_DIR: where the runnable project lives: batch_infer_simple.py, sample_csv_deterministic.py,
+# prompts/, myenv, etc. These ship alongside this script, so default to the script's own directory.
+# Override CODE_DIR explicitly to point at a staged copy elsewhere (e.g. Lustre on the cluster).
+CODE_DIR="${CODE_DIR:-$ROOT_DIR}"
 
 # STORE_DIR: where logs, outputs, samples and prompts live.
 STORE_DIR="${STORE_DIR:-$CODE_DIR}"

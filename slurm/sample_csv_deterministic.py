@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 def detect_csv_dialect(csv_path: Path) -> csv.Dialect:
+    """Detect the CSV delimiter and dialect using a sniffer on a sample of the file."""
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         sample = f.read(8192)
     try:
@@ -23,6 +24,7 @@ def detect_csv_dialect(csv_path: Path) -> csv.Dialect:
 
 
 def row_matches_filter(row: dict[str, str], filter_column: str, filter_value: str) -> bool:
+    """Check if a CSV row matches the specified filter column and value (case-insensitive)."""
     if not filter_column:
         return True
     return (row.get(filter_column) or "").strip().lower() == filter_value.strip().lower()
@@ -35,6 +37,7 @@ def count_eligible_rows(
     filter_column: str = "",
     filter_value: str = "",
 ) -> tuple[int, list[str]]:
+    """Count non-empty rows that match the optional filter criteria and return the fieldnames."""
     with input_csv.open("r", encoding="utf-8", newline="") as in_f:
         reader = csv.DictReader(in_f, dialect=dialect)
         if not reader.fieldnames:
@@ -63,15 +66,17 @@ def write_sample(
     filter_column: str = "",
     filter_value: str = "",
 ) -> int:
+    """Stream input_csv and write selected rows to output_csv based on their sorted indices."""
     selected_iter = iter(selected_positions)
     next_selected = next(selected_iter, None)
     written = 0
     eligible_pos = 0
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
-    with input_csv.open("r", encoding="utf-8", newline="") as in_f, output_csv.open(
-        "w", encoding="utf-8", newline=""
-    ) as out_f:
+    with (
+        input_csv.open("r", encoding="utf-8", newline="") as in_f,
+        output_csv.open("w", encoding="utf-8", newline="") as out_f,
+    ):
         reader = csv.DictReader(in_f, dialect=dialect)
         writer = csv.DictWriter(out_f, fieldnames=fieldnames, dialect=dialect)
         writer.writeheader()
@@ -98,7 +103,9 @@ def write_sample(
 
 
 def main() -> int:
+    """Parse command line arguments and execute the deterministic sampling workflow."""
     ap = argparse.ArgumentParser(description="Deterministic random CSV sampler")
+
     ap.add_argument("--input-csv", required=True, help="Input CSV path")
     ap.add_argument("--output-csv", required=True, help="Output sampled CSV path")
     ap.add_argument("--text-column", default="text", help="CSV text column used to filter empty rows")
