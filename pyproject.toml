@@ -4,17 +4,14 @@ version = "0.1.0"
 description = "A configuration-driven runner and tools for local LLM experiments"
 readme = "README.md"
 requires-python = ">=3.11"
+# Everything needed to validate, prepare, parse and test. No CUDA wheels.
 dependencies = [
     "openai>=2.24.0",
     "pyarrow>=19.0.1",
-    "pydantic>=2.13.0",
     "PyYAML>=6.0.3",
-    # Ministral 3 needs the post-Transformers-v5 Mistral/Pixtral dispatch fixes.
-    "vllm>=0.20.0,<0.21.0",
-    "torch==2.11.0",
-    "torchvision==0.26.0",
-    "torchaudio==2.11.0",
-    "transformers @ git+https://github.com/huggingface/transformers.git@10555512868d663ee1ff627e4f5c5c260114235b",
+    # The nvidia_api backend posts with requests; it must not arrive by way of
+    # vllm, or `--no-group gpu` would silently break the API path.
+    "requests>=2.32.0",
 ]
 
 [dependency-groups]
@@ -22,6 +19,31 @@ dev = [
     "pytest>=8.3.2",
     "ruff>=0.9.0",
 ]
+# Local inference only. `torch` and `vllm` are imported lazily inside the vLLM
+# backend, so every other command runs without them -- but they are ~9 GB of
+# CUDA wheels, which CPU-only work should not have to download.
+#
+# These stay in default-groups so a plain `uv sync` still builds a GPU-capable
+# environment, exactly as before; the cluster needs no change. CPU-only work
+# opts out with `uv sync --no-group gpu` / `uv run --no-group gpu pytest`.
+gpu = [
+    # Ministral 3 needs the post-Transformers-v5 Mistral/Pixtral dispatch fixes.
+    # Bumped past 10555512 to pick up gemma4_unified support (google/gemma-4-12b-it);
+    # vLLM has no native class for it but falls back to its generic Transformers
+    # backend automatically once Transformers itself recognizes the architecture.
+    "vllm>=0.20.0,<0.21.0",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "torchaudio==2.11.0",
+    "transformers @ git+https://github.com/huggingface/transformers.git@7ea2320c76117e6742364808a666ef6f2fb40a67",
+]
+
+[tool.uv]
+default-groups = ["dev", "gpu"]
+# Keep uv's cache inside the project (~9 GB of CUDA wheels) instead of the home
+# partition. Set here so no command needs a `UV_CACHE_DIR=` prefix; the path is
+# gitignored. The cluster invokes .venv/bin/python directly and never reads this.
+cache-dir = ".uv-cache"
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
@@ -32,6 +54,11 @@ explicit = true
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
 torchaudio = { index = "pytorch-cu130" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The runner logs verbosely to its own files; don't mirror it into failures.
+addopts = "--show-capture=no"
 
 [tool.ruff]
 line-length = 120

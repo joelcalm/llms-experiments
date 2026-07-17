@@ -19,9 +19,9 @@ Each support directory is one level deep. Generated `results/` are ignored by Gi
 From the repository root, create the uv environment and run the deterministic local contract check:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv sync
-UV_CACHE_DIR=.uv-cache uv run python experiment-cli/experiment_cli.py gpu-preflight
-UV_CACHE_DIR=.uv-cache uv run python experiment-cli/experiment_cli.py validate \
+uv sync
+uv run python experiment-cli/experiment_cli.py gpu-preflight
+uv run python experiment-cli/experiment_cli.py validate \
   --config experiments/local_all_modes_smoke.yaml
 
 uv run python experiment-cli/experiment_cli.py self-test \
@@ -34,9 +34,9 @@ The project is locked to the CUDA 13.0 PyTorch wheels. To recreate the
 environment explicitly with uv's Torch backend selector:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python \
-  --torch-backend cu130 torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
-UV_CACHE_DIR=.uv-cache uv sync
+uv pip install --python .venv/bin/python \
+  --torch-backend cu130 torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0
+uv sync
 ```
 
 `gpu-preflight` is a required GPU-installation gate: it checks both the host
@@ -103,7 +103,7 @@ rows no longer reread Markdown files or recompute their variant hash.
 
 The same experiment can be benchmarked through three vLLM interfaces:
 
-1. `python`: direct in-process Python API using `LLM.generate`, as in the vLLM example. The model is loaded by `experiment_cli.py` and reused across all variants.
+1. `python`: direct in-process Python API using `LLM.chat` (the chat-template path shared with the API and `run-batch` interfaces). The model is loaded by `experiment_cli.py` and reused across all variants.
 2. `api`: OpenAI-compatible HTTP API. Start a persistent server first, for example:
 
    ```bash
@@ -252,7 +252,8 @@ Copy `experiments/local_all_modes_smoke.yaml`, then change only data:
 
 - `input`: the source path, format, and ID/text columns;
 - `model`: the vLLM model and GPU limits;
-- `variants`: prompt files, schemas, or candidate strings;
+- `variants`: prompt files, schemas, or candidate strings, and an optional
+  `system_prompt` (one path or a list) rendered into a separate system turn;
 - `batch`: candidate sizes and warm-up row count;
 - `resources.cpu`: CPU affinity, reserved cores, and native thread-pool cap;
 - `output` and `logging`: ignored local destinations.

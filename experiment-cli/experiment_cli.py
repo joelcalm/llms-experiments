@@ -25,7 +25,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -62,6 +62,34 @@ TOKEN = re.compile(
     r"{{\s*(text|row_id|dataset_id|labels|candidate_mapping|question|definitions|theory|output_schema|raw_response|validation_errors|candidates)\s*}}"
 )
 UNRESOLVED_TOKEN = re.compile(r"{{\s*[^{}]+\s*}}")
+
+
+def top_logprobs_count(candidates: list[Any]) -> int:
+    """How many top logprobs to ask for to score `candidates`.
+
+    The headroom absorbs tokeniser variants of a candidate (' A' vs 'A'); the
+    cap is the maximum most OpenAI-compatible servers accept.
+    """
+    return min(20, len(candidates) + 5)
+
+
+def extract_top_logprobs(logprob_content: Any) -> list[tuple[str, float]]:
+    """Pull (token, logprob) pairs out of an OpenAI-shaped `logprobs.content`.
+
+    Accepts both plain dicts (HTTP/JSONL responses) and SDK objects, which is
+    why every lookup goes through `getattr`-then-`get` rather than one or the
+    other.
+    """
+    observed: list[tuple[str, float]] = []
+    for token in logprob_content or []:
+        candidates = token.get("top_logprobs") if isinstance(token, dict) else getattr(token, "top_logprobs", None)
+        for candidate in candidates or []:
+            if isinstance(candidate, dict):
+                name, logprob = candidate.get("token", ""), candidate.get("logprob", -float("inf"))
+            else:
+                name, logprob = getattr(candidate, "token", ""), getattr(candidate, "logprob", -float("inf"))
+            observed.append((str(name), float(logprob)))
+    return observed
 
 
 def aggregate_candidate_logprobs(raw_logprobs: list[tuple[str, float]], candidates: list[Any]) -> dict[str, float]:
@@ -184,8 +212,8 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
             raise ValueError("Missing required top-level key `input` (or `datasets`)")
         _validate_source(config["input"], "input")
         sources = [config["input"]]
-    if config["model"].get("backend") not in {"local_vllm", "fake"}:
-        raise ValueError("model.backend must be local_vllm or fake")
+    if config["model"].get("backend") not in {"local_vllm", "nvidia_api", "fake"}:
+        raise ValueError("model.backend must be local_vllm, nvidia_api, or fake")
     vllm_environment = config["model"].get("vllm_environment", {})
     if not isinstance(vllm_environment, dict):
         raise ValueError("model.vllm_environment must be a mapping")
@@ -252,6 +280,7 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
             paths.extend(str(item) for item in source.get("prompt_parts", {}).values())
         for variant in config["variants"]:
             paths.extend(variant["prompts"])
+            paths.extend(system_prompt_paths(variant))
             if schema := variant.get("validation", {}).get("schema"):
                 paths.append(schema)
         retry = config.get("validation", {}).get("retry", {}).get("correction_prompt")
@@ -391,22 +420,47 @@ def dataset_runtime(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def dataset_config(
+    config: dict[str, Any], dataset_id: str, source: dict[str, Any], base_output: Path | None = None
+) -> dict[str, Any]:
+    """Collapse one lane of a matrix config into a standalone single-input config.
+
+    Every matrix entry point needs exactly this shape, so it lives here rather
+    than being rebuilt by `select_dataset`, `run_matrix` and `prepare_matrix`.
+    """
+    if base_output is None:
+        base_output = resolve(config, config["output"]["directory"])
+    lane = deepcopy(config)
+    lane.pop("datasets", None)
+    lane["input"] = source
+    lane["run"] = {
+        **config["run"],
+        "id": f"{config['run']['id']}__{dataset_id}",
+        "dataset_id": dataset_id,
+        **dataset_runtime(source),
+    }
+    lane["output"] = {**config["output"], "directory": str(base_output / f"dataset={dataset_id}")}
+    return lane
+
+
+def selected_entries(config: dict[str, Any], selected: list[str] | None) -> list[tuple[str, dict[str, Any]]]:
+    """Return the requested dataset lanes, rejecting unknown ids."""
+    entries = dataset_entries(config)
+    if not selected:
+        return entries
+    wanted = set(selected)
+    entries = [(identifier, source) for identifier, source in entries if identifier in wanted]
+    missing = wanted - {identifier for identifier, _ in entries}
+    if missing:
+        raise ValueError(f"Unknown dataset id(s): {', '.join(sorted(missing))}")
+    return entries
+
+
 def select_dataset(config: dict[str, Any], dataset_id: str) -> dict[str, Any]:
     """Filter and return the configuration for a single selected dataset."""
     for identifier, source in dataset_entries(config):
         if identifier == dataset_id:
-            selected = deepcopy(config)
-            selected.pop("datasets", None)
-            selected["input"] = source
-            selected["run"] = {
-                **config["run"],
-                "id": f"{config['run']['id']}__{identifier}",
-                "dataset_id": identifier,
-                **dataset_runtime(source),
-            }
-            base_output = resolve(config, config["output"]["directory"])
-            selected["output"] = {**config["output"], "directory": str(base_output / f"dataset={identifier}")}
-            return selected
+            return dataset_config(config, identifier, source)
     raise ValueError(f"Unknown dataset id: {dataset_id}")
 
 
@@ -611,7 +665,28 @@ class Events:
         self.logger.info("%s %s", event, json.dumps(payload, sort_keys=True))
 
 
-def gpu() -> dict[str, Any]:
+_gpu_snapshot_cache: dict[str, Any] = {"taken_at": 0.0, "snapshot": None}
+
+
+def gpu(max_age_seconds: float = 0.0) -> dict[str, Any]:
+    """Query local GPU telemetry, optionally reusing a recent snapshot.
+
+    Each call shells out to nvidia-smi and costs ~20 ms. That is irrelevant once
+    per run but not once per batch: a 3M-row lane at batch=128 would spend tens
+    of minutes of wall clock there, in between batches. Callers that only want
+    a rough per-batch reading pass max_age_seconds; the manifest and preflight
+    leave it at 0 and always measure.
+    """
+    now = time.monotonic()
+    cached = _gpu_snapshot_cache["snapshot"]
+    if max_age_seconds > 0 and cached is not None and now - _gpu_snapshot_cache["taken_at"] <= max_age_seconds:
+        return cached
+    snapshot = _gpu_query()
+    _gpu_snapshot_cache.update({"taken_at": now, "snapshot": snapshot})
+    return snapshot
+
+
+def _gpu_query() -> dict[str, Any]:
     """Query local GPU usage metrics (memory, utilization) using nvidia-smi and torch."""
     try:
         line = (
@@ -782,9 +857,29 @@ class BackendFailure(RuntimeError):
 
 @dataclass
 class Response:
+    """One backend answer for one prompt.
+
+    `raw` is the model's text. `backend_error`, when set, means the request
+    never produced a model answer (an outage, an HTTP failure): it is the single
+    source of truth for that condition, so `raw` carries no fabricated payload
+    and every consumer must let `backend_error` win over schema validation (see
+    `interpret_response`). This is what keeps such a row classified
+    `failed_backend` — retryable — rather than `failed_validation`.
+    """
+
     raw: str
     token_count: int
     candidate_logprobs: dict[str, float] | None = None
+    backend_error: str | None = None
+
+
+class Backend(Protocol):
+    """The contract every backend implements. The main path is the in-process
+    vLLM one (VLLMBackend); nvidia_api and fake are the alternates."""
+
+    def generate(self, prompts: list[str], variant: dict[str, Any]) -> list[Response]: ...
+
+    def close(self) -> None: ...
 
 
 class FakeBackend:
@@ -796,6 +891,101 @@ class FakeBackend:
 
     def close(self) -> None:
         return None
+
+
+class NvidiaAPIBackend:
+    """OpenAI-compatible NVIDIA endpoint backend with bounded HTTP retries."""
+
+    def __init__(self, model: dict[str, Any], resource_guard: dict[str, Any] | None = None) -> None:
+        del resource_guard
+        try:
+            import requests
+        except ImportError as exc:
+            raise RuntimeError("nvidia_api requires the requests package.") from exc
+        self.requests = requests
+        self.model = model
+        self.url = str(model.get("api_base_url", "https://integrate.api.nvidia.com/v1/chat/completions"))
+        key_name = str(model.get("api_key_env", "NVIDIA_API_KEY"))
+        self.api_key = os.environ.get(key_name)
+        if not self.api_key:
+            raise RuntimeError(f"nvidia_api requires the {key_name} environment variable.")
+        self.timeout_seconds = float(model.get("api_timeout_seconds", 120))
+        self.concurrency = max(1, int(model.get("api_concurrency", 4)))
+        self.http_retries = max(0, int(model.get("api_http_retries", 2)))
+        # Endpoints that reject `response_format` can opt out; the schema then
+        # only reaches the model through the rendered {{output_schema}} token.
+        self.structured_outputs = bool(model.get("api_structured_outputs", True))
+        template_kwargs = model.get("chat_template_kwargs", {})
+        if not isinstance(template_kwargs, dict):
+            raise ValueError("model.chat_template_kwargs must be a mapping")
+        self.chat_template_kwargs = dict(template_kwargs)
+
+    def _generate_one(self, prompt: str, variant: dict[str, Any]) -> Response:
+        payload: dict[str, Any] = {
+            "model": self.model["name"],
+            "messages": conversation(variant.get("_system"), prompt),
+            "temperature": 0,
+            "stream": False,
+            "chat_template_kwargs": self.chat_template_kwargs,
+        }
+        if variant["request_mode"] == "candidate_logprobs":
+            payload.update(
+                {"max_tokens": 1, "logprobs": True, "top_logprobs": top_logprobs_count(variant["candidates"])}
+            )
+        else:
+            payload["max_tokens"] = int(variant.get("max_tokens", 128))
+            # Constrain generation server-side, as the vLLM and run-batch paths
+            # already do. Without this the API path is the only one relying on
+            # the prompt alone to produce schema-valid JSON.
+            if (schema := variant.get("_schema")) and self.structured_outputs:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": variant["id"], "schema": schema, "strict": True},
+                }
+        error = "unknown NVIDIA API failure"
+        for attempt in range(self.http_retries + 1):
+            try:
+                response = self.requests.post(
+                    self.url,
+                    headers={"Authorization": f"Bearer {self.api_key}", "Accept": "application/json"},
+                    json=payload,
+                    timeout=self.timeout_seconds,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    choice = (data.get("choices") or [{}])[0]
+                    raw = str((choice.get("message") or {}).get("content") or "")
+                    token_count = int((data.get("usage") or {}).get("completion_tokens") or 0)
+                    if variant["request_mode"] == "candidate_logprobs":
+                        observed = extract_top_logprobs((choice.get("logprobs") or {}).get("content"))
+                        scores = aggregate_candidate_logprobs(observed, variant["candidates"])
+                        return Response(json.dumps({"candidates": scores}), token_count, scores)
+                    return Response(raw, token_count)
+                error = f"http_{response.status_code}: {response.text[:500]}"
+            except Exception as exc:
+                error = f"http_exception: {exc}"
+            if attempt < self.http_retries:
+                time.sleep(min(8, 2**attempt))
+        # One output per input so the retry/error path keeps this row's source
+        # identity. `raw` is left empty on purpose: `backend_error` is the only
+        # signal of a failed request, so no fabricated JSON can later be mistaken
+        # for a real (invalid) model answer and mislabelled `failed_validation`.
+        return Response("", 0, None, error)
+
+    def generate(self, prompts: list[str], variant: dict[str, Any]) -> list[Response]:
+        with ThreadPoolExecutor(max_workers=min(self.concurrency, len(prompts))) as executor:
+            return list(executor.map(lambda prompt: self._generate_one(prompt, variant), prompts))
+
+    def close(self) -> None:
+        return None
+
+
+def make_backend(model: dict[str, Any], resource_guard: dict[str, Any] | None = None) -> Backend:
+    if model.get("backend") == "fake":
+        return FakeBackend()
+    if model.get("backend") == "nvidia_api":
+        return NvidiaAPIBackend(model, resource_guard)
+    return VLLMBackend(model, resource_guard)
 
 
 class VLLMBackend:
@@ -818,7 +1008,10 @@ class VLLMBackend:
         try:
             from vllm import LLM, SamplingParams
         except ImportError as exc:
-            raise RuntimeError("local_vllm requires vLLM; install the uv project dependencies first.") from exc
+            raise RuntimeError(
+                "local_vllm requires vLLM, which lives in the optional `gpu` dependency group. "
+                "Run `uv sync` (it installs that group by default) in an environment built with `--no-group gpu`."
+            ) from exc
         configure_torch_cpu_threads(resource_guard)
         self.params = SamplingParams
         llm_kwargs: dict[str, Any] = {
@@ -844,16 +1037,22 @@ class VLLMBackend:
             "dtype",
             "tensor_parallel_size",
             "trust_remote_code",
+            "model_impl",
+            "mm_encoder_attn_backend",
         ):
-            if option in model:
+            if model.get(option) is not None:
                 llm_kwargs[option] = model[option]
         self.llm = LLM(
             **llm_kwargs,
         )
+        template_kwargs = model.get("chat_template_kwargs", {})
+        if not isinstance(template_kwargs, dict):
+            raise ValueError("model.chat_template_kwargs must be a mapping")
+        self.chat_template_kwargs = dict(template_kwargs)
 
     def generate(self, prompts: list[str], variant: dict[str, Any]) -> list[Response]:
         if variant["request_mode"] == "candidate_logprobs":
-            params = self.params(temperature=0, max_tokens=1, logprobs=min(20, len(variant["candidates"]) + 5))
+            params = self.params(temperature=0, max_tokens=1, logprobs=top_logprobs_count(variant["candidates"]))
         else:
             kwargs: dict[str, Any] = {"temperature": 0, "max_tokens": variant.get("max_tokens", 128)}
             if schema := variant.get("_schema"):
@@ -864,8 +1063,13 @@ class VLLMBackend:
                 )
             params = self.params(**kwargs)
         try:
-            conversations = [[{"role": "user", "content": item}] for item in prompts]
-            outputs = self.llm.chat(conversations, params, use_tqdm=False)
+            conversations = [conversation(variant.get("_system"), item) for item in prompts]
+            outputs = self.llm.chat(
+                conversations,
+                params,
+                use_tqdm=False,
+                chat_template_kwargs=self.chat_template_kwargs or None,
+            )
         except Exception as exc:
             if any(word in str(exc).lower() for word in ("out of memory", "oom", "context length", "max model len")):
                 raise BackendFailure(str(exc)) from exc
@@ -893,7 +1097,7 @@ class VLLMBackend:
 
 
 def tune(
-    backend: Any, variant: dict[str, Any], prompts: list[str], batch: dict[str, Any], events: Events, sync: bool
+    backend: Backend, variant: dict[str, Any], prompts: list[str], batch: dict[str, Any], events: Events, sync: bool
 ) -> tuple[int, list[dict[str, Any]]]:
     if batch.get("mode", "auto") == "fixed":
         return int(batch.get("size", batch.get("candidates", [1])[0])), []
@@ -946,15 +1150,22 @@ def serialise(value: Any) -> str | None:
 
 
 def prompt_group_id(config: dict[str, Any], variant: dict[str, Any], schema: dict[str, Any] | None) -> str:
-    """Identify the reusable static prefix shared by rows in a variant."""
+    """Identify the reusable static prefix shared by rows in a variant.
+
+    The system turn is part of that prefix, so two variants differing only in
+    their system prompt must not share a group id.
+    """
     sentinel = {config["input"]["id_column"]: "<row>", config["input"]["text_column"]: "<text>"}
     static = rendered_prompt(config, variant, sentinel, schema)
-    return hashlib.sha256(static.replace("<text>", "{{text}}").encode()).hexdigest()[:16]
+    system = system_prompt(config, variant, schema)
+    # A variant without a system prompt must hash exactly as it always has.
+    material = f"{system}\n\n{static}" if system else static
+    return hashlib.sha256(material.replace("<text>", "{{text}}").encode()).hexdigest()[:16]
 
 
 def variant_config_hash(config: dict[str, Any], variant: dict[str, Any]) -> str:
     assets = {}
-    for path in variant.get("prompts", []):
+    for path in list(variant.get("prompts", [])) + system_prompt_paths(variant):
         assets[str(path)] = read_asset(config, path)
     for name, path in config.get("run", {}).get("prompt_parts", {}).items():
         assets[f"part:{name}"] = read_asset(config, path)
@@ -979,6 +1190,11 @@ class ResumeIndex:
         )
         self.connection.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
         self.cleared = False
+        # Keys of rows an earlier run left in `failed_backend`. They are held in
+        # memory rather than SQLite because they are bounded by the number of
+        # failures, not the number of rows, and merge_parts needs them to drop
+        # the superseded copy once the row is re-attempted.
+        self.retryable_keys: set[tuple[str, str, int]] = set()
         if fingerprint is not None:
             previous = self.connection.execute("SELECT value FROM metadata WHERE key='fingerprint'").fetchone()
             if previous and previous[0] != fingerprint:
@@ -1007,17 +1223,25 @@ class ResumeIndex:
             columns = ["variant_id", "input_row_id", "source_position"]
             if expected_hashes and "config_hash" in parquet.schema.names:
                 columns.append("config_hash")
+            if "final_status" in parquet.schema.names:
+                columns.append("final_status")
             for batch in parquet.iter_batches(columns=columns):
                 records = batch.to_pylist()
                 if expected_hashes:
                     records = [
                         row for row in records if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))
                     ]
+                done = [row for row in records if row.get("final_status") != "failed_backend"]
+                self.retryable_keys.update(
+                    (str(row["variant_id"]), str(row["input_row_id"]), saved_position(row))
+                    for row in records
+                    if row.get("final_status") == "failed_backend"
+                )
                 self.connection.executemany(
                     "INSERT OR IGNORE INTO completed VALUES (?, ?, ?)",
-                    [(str(row["variant_id"]), str(row["input_row_id"]), saved_position(row)) for row in records],
+                    [(str(row["variant_id"]), str(row["input_row_id"]), saved_position(row)) for row in done],
                 )
-                count += len(records)
+                count += len(done)
         self.connection.commit()
         return count
 
@@ -1034,34 +1258,87 @@ class PartWriter:
         self.rows: list[dict[str, Any]] = []
         self.index = len(list(self.directory.glob("part-*.parquet")))
 
-    def append(self, row: dict[str, Any]) -> None:
+    def append(self, row: dict[str, Any]) -> bool:
+        """Buffer a row and report whether this call durably published a part."""
         self.rows.append(row)
         if len(self.rows) >= self.target_rows:
-            self.flush()
+            return self.flush()
+        return False
 
-    def flush(self) -> None:
+    def flush(self) -> bool:
+        """Atomically publish buffered rows to the shared result filesystem."""
         if not self.rows:
-            return
+            return False
         path = self.directory / f"part-{self.index:05d}.parquet"
-        pq.write_table(pa.Table.from_pylist(self.rows, schema=RESULT_SCHEMA), path, compression="zstd")
+        temporary = path.with_suffix(".parquet.tmp")
+        pq.write_table(pa.Table.from_pylist(self.rows, schema=RESULT_SCHEMA), temporary, compression="zstd")
+        temporary.replace(path)
         self.index += 1
         self.rows.clear()
+        return True
 
     def close(self) -> None:
         self.flush()
 
 
-def merge_parts(run_dir: Path, expected_hashes: dict[str, str] | None = None) -> int:
-    """Create compatibility result files from append-only variant parts."""
+def _part_keys(table: pa.Table) -> list[tuple[str, str, int]]:
+    columns = zip(
+        table["variant_id"].to_pylist(), table["input_row_id"].to_pylist(), table["source_position"].to_pylist()
+    )
+    return [(str(variant), str(row_id), int(position)) for variant, row_id, position in columns]
+
+
+def _last_occurrence(files: list[Path], keys: set[tuple[str, str, int]]) -> dict[tuple[str, str, int], tuple[int, int]]:
+    """Locate the newest row written for each of `keys`, as (file index, row index).
+
+    Parts are append-only and sorted by name, so the last occurrence is the most
+    recent attempt. Only three columns are read and only `keys` is retained, so
+    the cost is bounded by the number of retried rows rather than the run size.
+    """
+    latest: dict[tuple[str, str, int], tuple[int, int]] = {}
+    for file_index, path in enumerate(files):
+        table = pq.read_table(path, columns=["variant_id", "input_row_id", "source_position"])
+        for row_index, key in enumerate(_part_keys(table)):
+            if key in keys:
+                latest[key] = (file_index, row_index)
+    return latest
+
+
+def _supersede_mask(
+    table: pa.Table, surviving: dict[tuple[str, str, int], tuple[int, int]], file_index: int
+) -> list[bool]:
+    """Keep every row except earlier attempts at a key that was retried."""
+    return [
+        surviving.get(key, (file_index, row_index)) == (file_index, row_index)
+        for row_index, key in enumerate(_part_keys(table))
+    ]
+
+
+def merge_parts(
+    run_dir: Path,
+    expected_hashes: dict[str, str] | None = None,
+    retried_keys: set[tuple[str, str, int]] | None = None,
+) -> int:
+    """Create compatibility result files from append-only variant parts.
+
+    `retried_keys` are rows a previous run left as `failed_backend` and this run
+    re-attempted. Parts are append-only, so both attempts are on disk; only the
+    newest survives the merge. When nothing was retried this costs nothing.
+    """
     files = sorted((run_dir / "parts").glob("variant=*/part-*.parquet")) if (run_dir / "parts").exists() else []
     if not files:
         return 0
+    surviving = _last_occurrence(files, retried_keys) if retried_keys else {}
     writer: pq.ParquetWriter | None = None
     variant_writers: dict[str, pq.ParquetWriter] = {}
     count = 0
     try:
-        for path in files:
+        for file_index, path in enumerate(files):
             table = pq.read_table(path)
+            if surviving:
+                table = table.filter(_supersede_mask(table, surviving, file_index))
+                if table.num_rows == 0:
+                    continue
             if expected_hashes and "config_hash" in table.column_names:
                 variant_id = path.parent.name.split("=", 1)[-1]
                 table = table.filter(pa.compute.equal(table["config_hash"], expected_hashes.get(variant_id, "")))
@@ -1085,54 +1362,247 @@ def merge_parts(run_dir: Path, expected_hashes: dict[str, str] | None = None) ->
     return count
 
 
-def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit: int | None = None) -> dict[str, Any]:
-    """Execute a source in bounded chunks and append Parquet parts."""
-    run_id = config["run"]["id"]
-    run_dir = resolve(config, config["output"]["directory"])
+def make_events(config: dict[str, Any], run_dir: Path, run_id: str) -> Events:
+    """Build the event log for a run.
+
+    Matrix lanes and `--set` overrides must never share the YAML's default log
+    names, so once run.id or output.directory is overridden the paths are
+    derived from the effective output directory instead.
+    """
     logging_config = config.get("logging", {})
     if any(key in config.get("_override_keys", []) for key in ("run.id", "output.directory")):
         logging_config = dict(logging_config)
         logging_config["file"] = str(run_dir / "logs" / f"{run_id}.log")
         logging_config["events"] = str(run_dir / "logs" / f"{run_id}.events.jsonl")
-    events = Events(
+    return Events(
         resolve(config, logging_config.get("file", f"logs/{run_id}.log")),
         resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
         logging_config.get("level", "INFO"),
     )
+
+
+def error_kind(errors: list[str], response: Response, max_tokens: int) -> str:
+    """Classify why a response failed validation."""
+    if response.token_count >= int(max_tokens or 0):
+        return "output_length_limit"
+    if any(error.startswith("json_parse_error:") for error in errors):
+        return "format"
+    return "schema"
+
+
+def generate_with_backoff(
+    backend: Backend,
+    request_variant: dict[str, Any],
+    prompts: list[str],
+    batch_config: dict[str, Any],
+    on_backoff: Any | None = None,
+) -> tuple[list[Response], int]:
+    """Generate, halving the batch until the backend stops failing.
+
+    Returns the responses and how many prompts they cover, so the caller can
+    truncate its own chunk to match. Raises once the batch cannot shrink
+    further: an OOM at the minimum size is a real failure, not a hiccup.
+    """
+    minimum = int(batch_config.get("min_size", 1))
+    while True:
+        try:
+            responses = backend.generate(prompts, request_variant)
+            if len(responses) != len(prompts):
+                raise BackendFailure(f"Backend returned {len(responses)} responses for {len(prompts)} prompts")
+            return responses, len(prompts)
+        except BackendFailure as exc:
+            if len(prompts) <= minimum:
+                raise
+            new_size = max(minimum, len(prompts) // 2)
+            if on_backoff is not None:
+                on_backoff(exc, len(prompts), new_size)
+            prompts = prompts[:new_size]
+
+
+BACKEND_ERROR_PREFIX = "backend_error:"
+
+
+def failure_status(errors: list[str]) -> str:
+    """Tell a broken backend apart from a badly behaved model.
+
+    The distinction is what makes resume safe to retry: a `backend_error` is
+    the infrastructure failing (an outage, a dropped connection) and is worth
+    re-attempting, whereas a schema violation is the model answering
+    deterministically and would fail again identically on every resume.
+    """
+    return "failed_backend" if any(item.startswith(BACKEND_ERROR_PREFIX) for item in errors) else "failed_validation"
+
+
+def interpret_response(
+    response: Response, schema: dict[str, Any] | None, request_mode: str
+) -> tuple[Any | None, list[str]]:
+    """Turn a backend `Response` into `(parsed, errors)`.
+
+    A `backend_error` always wins over schema validation and over logprob
+    extraction: it means the request never reached the model, so `response.raw`
+    is not a model answer and must not be judged as one. Every request path — the
+    main loop, the inline retry, the deferred retry — must decode responses
+    through here, or a retry that hits a fresh outage gets mislabelled
+    `failed_validation` and is then never re-attempted on resume.
+    """
+    if response.backend_error:
+        return None, [f"{BACKEND_ERROR_PREFIX} {response.backend_error}"]
+    if request_mode == "candidate_logprobs":
+        return {"candidates": response.candidate_logprobs or {}}, []
+    return validate_response(response.raw, schema)
+
+
+def result_row(
+    config: dict[str, Any],
+    *,
+    run_id: str,
+    variant_id: str,
+    config_hash: str,
+    group_id: str | None,
+    row: dict[str, Any],
+    prompt_text: str,
+    raw: str | None,
+    parsed: Any | None,
+    errors: list[str],
+    attempt_count: int,
+    token_count: int | None = None,
+    batch_size: int | None = None,
+    latency_seconds: float | None = None,
+    rows_per_second: float | None = None,
+    gpu_snapshot: str | None = None,
+    candidate_logprobs: dict[str, float] | None = None,
+    final_status: str | None = None,
+) -> dict[str, Any]:
+    """Build one row of the Parquet result contract.
+
+    Every write path goes through here so the contract stays defined in exactly
+    one place alongside RESULT_SCHEMA.
+    """
+    source = config["input"]
+    return {
+        "run_id": run_id,
+        "dataset_id": config["run"].get("dataset_id", "default"),
+        "variant_id": variant_id,
+        "input_row_id": str(row[source["id_column"]]),
+        "source_position": row["_source_position"],
+        "input_text": str(row[source["text_column"]]) if config["output"].get("include_text") else None,
+        "gold_labels": serialise(row.get("_gold_labels")),
+        "prompt_hash": hashlib.sha256(prompt_text.encode()).hexdigest(),
+        "config_hash": config_hash,
+        "prompt_group_id": group_id,
+        "attempt_count": attempt_count,
+        "raw_response": raw if config["output"].get("include_raw_response", True) else None,
+        "parsed_output": serialise(parsed),
+        "validation_status": "valid" if not errors else "invalid",
+        "validation_errors": serialise(errors),
+        "final_status": final_status or ("completed" if not errors else failure_status(errors)),
+        "batch_size": batch_size,
+        "latency_seconds": latency_seconds,
+        "rows_per_second": rows_per_second,
+        "token_count": token_count,
+        "gpu_snapshot": gpu_snapshot,
+        "candidate_logprobs": serialise(candidate_logprobs),
+    }
+
+
+def discard_stale_results(run_dir: Path, config: dict[str, Any]) -> None:
+    """Remove results that a changed configuration has invalidated."""
+    import shutil
+
+    if (run_dir / "parts").exists():
+        shutil.rmtree(run_dir / "parts")
+    for path in [run_dir / "results.parquet"] + [run_dir / f"{item['id']}.parquet" for item in config["variants"]]:
+        if path.exists():
+            path.unlink()
+
+
+def _counted(rows: Any, counter: list[int]) -> Any:
+    """Count rows as they are pulled, so a stream never needs a second pass."""
+    for row in rows:
+        counter[0] += 1
+        yield row
+
+
+class ErrorLog:
+    """Append-only per-variant error records, holding the handle open."""
+
+    def __init__(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.handle = path.open("a", encoding="utf-8")
+
+    def write(self, **record: Any) -> None:
+        self.handle.write(json.dumps({"timestamp": time.time(), **record}, ensure_ascii=False, sort_keys=True) + "\n")
+        self.handle.flush()
+
+    def close(self) -> None:
+        self.handle.close()
+
+
+def run(config: dict[str, Any], backend: Backend | None = None, row_limit: int | None = None) -> dict[str, Any]:
+    """Execute every variant of one dataset and write the Parquet result contract.
+
+    Rows always flow through the same bounded chunk loop and land in append-only
+    Parquet parts. `streaming.enabled` only decides whether the source is
+    materialised first — which lets the manifest report exact input and pending
+    counts — or consumed as a true stream, which a multi-million-row CSV needs.
+    """
+    if backend is None and config["model"].get("backend") == "local_vllm" and "_resource_guard" not in config:
+        apply_resource_guard(config)
+    streaming = bool(config.get("streaming", {}).get("enabled", False))
+    run_id = config["run"]["id"]
+    run_dir = resolve(config, config["output"]["directory"])
     run_dir.mkdir(parents=True, exist_ok=True)
+    events = make_events(config, run_dir, run_id)
+
     expected_hashes = {
         str(variant["id"]): variant_config_hash(config, materialize_variant(config, variant))
         for variant in config["variants"]
     }
     index = ResumeIndex(
-        run_dir / ".resume.sqlite", hashlib.sha256(json.dumps(expected_hashes, sort_keys=True).encode()).hexdigest()
+        run_dir / ".resume.sqlite",
+        hashlib.sha256(json.dumps(expected_hashes, sort_keys=True).encode()).hexdigest(),
     )
     if index.cleared:
-        import shutil
-
-        if (run_dir / "parts").exists():
-            shutil.rmtree(run_dir / "parts")
-        if (run_dir / "results.parquet").exists():
-            (run_dir / "results.parquet").unlink()
-        for variant in config["variants"]:
-            v_parquet = run_dir / f"{variant['id']}.parquet"
-            if v_parquet.exists():
-                v_parquet.unlink()
+        discard_stale_results(run_dir, config)
     part_files = list((run_dir / "parts").glob("variant=*/part-*.parquet")) if (run_dir / "parts").exists() else []
     seeded = index.seed_from(
-        part_files or ([run_dir / "results.parquet"] if (run_dir / "results.parquet").exists() else []), expected_hashes
+        part_files or ([run_dir / "results.parquet"] if (run_dir / "results.parquet").exists() else []),
+        expected_hashes,
     )
-    created = False
-    selected: dict[str, Any] = {}
-    total_input = 0
+
+    # A materialised source knows its size up front; a stream is counted as it
+    # is consumed, which is why neither path needs a second read of the input.
+    materialised = None if streaming else rows_for_source(config, config["input"], row_limit)
+    pulled = [0]
+    total_input = len(materialised) if materialised is not None else 0
+    # Every variant re-reads the source, so only the first pass is counted.
+    input_counted = materialised is not None
     total_results = seeded
+    selected: dict[str, Any] = {}
+    retry_settings = config.get("validation", {}).get("retry", {})
+    correction_path = retry_settings.get("correction_prompt")
+    correction = read_asset(config, correction_path) if correction_path else None
+    created = False
+
     try:
         for configured_variant in config["variants"]:
             variant = materialize_variant(config, configured_variant)
-            config_hash = expected_hashes[variant["id"]]
+            variant_id = str(variant["id"])
+            config_hash = expected_hashes[variant_id]
             schema = variant_schema(config, variant)
-            request_variant = {**variant, "_schema": schema}
-            source_iter = iter_rows_for_source(config, config["input"], row_limit)
+            request_variant = {**variant, "_schema": schema, "_system": system_prompt(config, variant, schema)}
+            max_tokens = int(request_variant.get("max_tokens", 128))
+            allow_retry = bool(correction and retry_settings.get("enabled")) and (
+                request_variant["request_mode"] != "candidate_logprobs"
+            )
+
+            if materialised is not None:
+                source_iter: Any = iter(materialised)
+            else:
+                source_iter = iter_rows_for_source(config, config["input"], row_limit)
+                if not input_counted:
+                    source_iter = _counted(source_iter, pulled)
+
             batch_config = dict(config.get("batch", {}))
             maximum = int(config["model"].get("max_num_seqs", max(batch_config.get("candidates", [1]))))
             batch_config["candidates"] = [
@@ -1144,16 +1614,25 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
             prefetched = list(itertools.islice(source_iter, prefetch_count))
             if not prefetched:
                 continue
-            if total_input == 0:
-                total_input = len(prefetched)
-            tune_prompts = [rendered_prompt(config, variant, row, schema) for row in prefetched]
-            if backend is None:
-                backend = (
-                    FakeBackend()
-                    if config["model"]["backend"] == "fake"
-                    else VLLMBackend(config["model"], config.get("_resource_guard"))
+
+            pending_rows = None
+            if materialised is not None:
+                pending_rows = sum(
+                    1
+                    for row in materialised
+                    if not index.contains(
+                        (variant_id, str(row[config["input"]["id_column"]]), int(row["_source_position"]))
+                    )
                 )
+                if pending_rows == 0:
+                    events.emit("variant_resumed", variant=variant_id, skipped=len(materialised))
+                    continue
+
+            if backend is None:
+                backend = make_backend(config["model"], config.get("_resource_guard"))
                 created = True
+
+            tune_prompts = [rendered_prompt(config, variant, row, schema) for row in prefetched]
             size, attempts = tune(
                 backend,
                 request_variant,
@@ -1164,123 +1643,242 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
             )
             size = min(size, maximum)
             group_id = prompt_group_id(config, variant, schema)
-            selected[variant["id"]] = {"selected_batch_size": size, "prompt_group_id": group_id, "tuning": attempts}
-            events.emit("variant_started", variant=variant["id"], prompt_group_id=group_id, batch_size=size)
-            correction_path = config.get("validation", {}).get("retry", {}).get("correction_prompt")
-            correction = read_asset(config, correction_path) if correction_path else None
-            writer = PartWriter(run_dir, variant["id"], int(config.get("streaming", {}).get("output_chunk_rows", 4096)))
-            pending_rows = itertools.chain(prefetched, source_iter)
-            buffer = []
+            selected[variant_id] = {"selected_batch_size": size, "prompt_group_id": group_id, "tuning": attempts}
+            if pending_rows is not None:
+                selected[variant_id]["pending_rows"] = pending_rows
+            events.emit("variant_started", variant=variant_id, prompt_group_id=group_id, batch_size=size)
+
+            writer = PartWriter(run_dir, variant_id, int(config.get("streaming", {}).get("output_chunk_rows", 4096)))
+            errors_log = ErrorLog(run_dir / "errors" / f"variant={variant_id}.jsonl")
+            deferred_retries: list[dict[str, Any]] = []
+            pending_index_keys: list[tuple[str, str, int]] = []
+
+            def record_error(
+                *,
+                stage: str,
+                row: dict[str, Any],
+                response: Response,
+                raw: str,
+                errors: list[str],
+                attempt_count: int,
+                batch_size: int,
+                max_tokens: int,
+                variant_id: str = variant_id,
+                errors_log: ErrorLog = errors_log,
+            ) -> None:
+                errors_log.write(
+                    run_id=run_id,
+                    dataset_id=config["run"].get("dataset_id", "default"),
+                    variant_id=variant_id,
+                    input_row_id=str(row[config["input"]["id_column"]]),
+                    source_position=int(row["_source_position"]),
+                    stage=stage,
+                    error_kind=error_kind(errors, response, max_tokens),
+                    validation_errors=errors,
+                    attempt_count=attempt_count,
+                    batch_size=batch_size,
+                    max_tokens=max_tokens,
+                    token_count=response.token_count,
+                    raw_response=raw,
+                )
+
+            def append_output(
+                output: dict[str, Any],
+                variant_id: str = variant_id,
+                writer: PartWriter = writer,
+                pending_index_keys: list[tuple[str, str, int]] = pending_index_keys,
+            ) -> None:
+                """Publish a part before marking any of its rows resumable.
+
+                A row the backend never answered is deliberately left out of the
+                index: the index outlives the run, so marking it here would make
+                the next resume treat an outage as settled work.
+                """
+                if output["final_status"] != "failed_backend":
+                    pending_index_keys.append((variant_id, str(output["input_row_id"]), int(output["source_position"])))
+                if writer.append(output):
+                    for key in pending_index_keys:
+                        index.add(key)
+                    pending_index_keys.clear()
+
+            def on_backoff(
+                exc: BackendFailure,
+                old_size: int,
+                new_size: int,
+                *,
+                stage: str = "initial_batch_backoff",
+                variant_id: str = variant_id,
+                errors_log: ErrorLog = errors_log,
+            ) -> None:
+                events.emit(
+                    "batch_runtime_backoff",
+                    variant=variant_id,
+                    old_batch_size=old_size,
+                    new_batch_size=new_size,
+                    error=str(exc),
+                )
+                errors_log.write(
+                    run_id=run_id,
+                    dataset_id=config["run"].get("dataset_id", "default"),
+                    variant_id=variant_id,
+                    stage=stage,
+                    error_kind="backend_batch_failure",
+                    error=str(exc),
+                    failed_batch_size=old_size,
+                    new_batch_size=new_size,
+                )
+
+            pending_rows_iter = itertools.chain(prefetched, source_iter)
+            buffer: list[dict[str, Any]] = []
             while True:
                 while len(buffer) < size:
                     try:
-                        row = next(pending_rows)
-                        key = (variant["id"], str(row[config["input"]["id_column"]]), int(row["_source_position"]))
-                        if not index.contains(key):
-                            buffer.append(row)
+                        row = next(pending_rows_iter)
                     except StopIteration:
                         break
+                    key = (variant_id, str(row[config["input"]["id_column"]]), int(row["_source_position"]))
+                    if not index.contains(key):
+                        buffer.append(row)
                 if not buffer:
                     break
                 chunk = buffer[:size]
                 prompts = [rendered_prompt(config, variant, row, schema) for row in chunk]
+                sync_cuda(bool(config["model"].get("synchronize_cuda", False)))
                 started = time.perf_counter()
-                while True:
-                    try:
-                        responses = backend.generate(prompts, request_variant)
-                        if len(responses) != len(chunk):
-                            raise BackendFailure(
-                                f"Backend returned {len(responses)} responses for {len(chunk)} prompts"
-                            )
-                        break
-                    except BackendFailure as exc:
-                        minimum = int(batch_config.get("min_size", 1))
-                        if len(chunk) <= minimum:
-                            raise
-                        size = max(minimum, len(chunk) // 2)
-                        selected[variant["id"]]["runtime_batch_size"] = size
-                        events.emit("batch_runtime_backoff", variant=variant["id"], new_batch_size=size, error=str(exc))
-                        chunk = chunk[:size]
-                        prompts = prompts[:size]
+                responses, used = generate_with_backoff(backend, request_variant, prompts, batch_config, on_backoff)
+                if used < len(chunk):
+                    size = used
+                    selected[variant_id]["runtime_batch_size"] = size
+                    chunk = chunk[:used]
+                sync_cuda(bool(config["model"].get("synchronize_cuda", False)))
                 elapsed = max(time.perf_counter() - started, 1e-9)
-                snapshot = serialise(gpu())
+                snapshot = serialise(gpu(max_age_seconds=5.0))
+
                 for row, current_prompt, response in zip(chunk, prompts, responses):
-                    parsed, errors = validate_response(response.raw, schema)
                     raw = response.raw
                     attempt_count = 1
-                    if request_variant["request_mode"] == "candidate_logprobs":
-                        parsed, errors = {"candidates": response.candidate_logprobs or {}}, []
-
-                    if (
-                        errors
-                        and correction
-                        and config.get("validation", {}).get("retry", {}).get("enabled")
-                        and request_variant["request_mode"] != "candidate_logprobs"
-                    ):
-                        events.emit(
-                            "retry_started", variant=variant["id"], input_row_id=str(row[config["input"]["id_column"]])
+                    parsed, errors = interpret_response(response, schema, request_variant["request_mode"])
+                    if response.backend_error:
+                        record_error(
+                            stage="backend_response",
+                            row=row,
+                            response=response,
+                            raw=raw,
+                            errors=errors,
+                            attempt_count=attempt_count,
+                            batch_size=size,
+                            max_tokens=max_tokens,
                         )
-                        for _ in range(int(config["validation"]["retry"].get("max_attempts", 0))):
-                            retry_prompt = render(
-                                correction,
-                                retry_values(config, variant, row, schema, raw, errors),
-                            )
-                            raw = backend.generate([retry_prompt], request_variant)[0].raw
-                            parsed, errors = validate_response(raw, schema)
+
+                    if errors and allow_retry and retry_settings.get("deferred", False):
+                        record_error(
+                            stage="initial_validation",
+                            row=row,
+                            response=response,
+                            raw=raw,
+                            errors=errors,
+                            attempt_count=attempt_count,
+                            batch_size=size,
+                            max_tokens=max_tokens,
+                        )
+                        deferred_retries.append(
+                            {
+                                "row": row,
+                                "prompt": current_prompt,
+                                "response": response,
+                                "raw": raw,
+                                "errors": errors,
+                                "attempt_count": attempt_count,
+                            }
+                        )
+                        continue
+
+                    if errors and allow_retry:
+                        events.emit(
+                            "retry_started", variant=variant_id, input_row_id=str(row[config["input"]["id_column"]])
+                        )
+                        for _ in range(int(retry_settings.get("max_attempts", 0))):
+                            retry_prompt = render(correction, retry_values(config, variant, row, schema, raw, errors))
+                            retry_response = backend.generate([retry_prompt], request_variant)[0]
+                            raw = retry_response.raw
+                            parsed, errors = interpret_response(retry_response, schema, request_variant["request_mode"])
                             attempt_count += 1
                             if not errors:
                                 break
                         events.emit(
                             "retry_completed",
-                            variant=variant["id"],
+                            variant=variant_id,
                             input_row_id=str(row[config["input"]["id_column"]]),
                             attempts=attempt_count,
                             validation_status="valid" if not errors else "invalid",
                         )
 
-                    output = {
-                        "run_id": run_id,
-                        "dataset_id": config["run"].get("dataset_id", "default"),
-                        "variant_id": variant["id"],
-                        "input_row_id": str(row[config["input"]["id_column"]]),
-                        "source_position": row["_source_position"],
-                        "input_text": str(row[config["input"]["text_column"]])
-                        if config["output"].get("include_text")
-                        else None,
-                        "gold_labels": serialise(row.get("_gold_labels")),
-                        "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                        "config_hash": config_hash,
-                        "prompt_group_id": group_id,
-                        "attempt_count": attempt_count,
-                        "raw_response": raw if config["output"].get("include_raw_response", True) else None,
-                        "parsed_output": serialise(parsed),
-                        "validation_status": "valid" if not errors else "invalid",
-                        "validation_errors": serialise(errors),
-                        "final_status": "completed" if not errors else "failed_validation",
-                        "batch_size": size,
-                        "latency_seconds": elapsed / len(chunk),
-                        "rows_per_second": len(chunk) / elapsed,
-                        "token_count": response.token_count,
-                        "gpu_snapshot": snapshot,
-                        "candidate_logprobs": serialise(response.candidate_logprobs),
-                    }
-                    writer.append(output)
-                    index.add((variant["id"], output["input_row_id"], int(output["source_position"])))
+                    append_output(
+                        result_row(
+                            config,
+                            run_id=run_id,
+                            variant_id=variant_id,
+                            config_hash=config_hash,
+                            group_id=group_id,
+                            row=row,
+                            prompt_text=current_prompt,
+                            raw=raw,
+                            parsed=parsed,
+                            errors=errors,
+                            attempt_count=attempt_count,
+                            token_count=response.token_count,
+                            batch_size=size,
+                            latency_seconds=elapsed / len(chunk),
+                            rows_per_second=len(chunk) / elapsed,
+                            gpu_snapshot=snapshot,
+                            candidate_logprobs=response.candidate_logprobs,
+                        )
+                    )
                     total_results += 1
                 index.connection.commit()
                 events.emit(
-                    "batch_completed", variant=variant["id"], rows=len(chunk), rows_per_second=len(chunk) / elapsed
+                    "batch_completed", variant=variant_id, rows=len(chunk), rows_per_second=len(chunk) / elapsed
                 )
                 buffer = buffer[len(chunk) :]
+
+            if not input_counted:
+                # The loop above drains the source, so this pass saw every row.
+                total_input = pulled[0]
+                input_counted = True
+
+            total_results += run_deferred_retries(
+                config,
+                deferred_retries,
+                backend=backend,
+                events=events,
+                index=index,
+                errors_log=errors_log,
+                append_output=append_output,
+                request_variant=request_variant,
+                schema=schema,
+                variant=variant,
+                correction=correction,
+                batch_config=batch_config,
+                size=size,
+                run_id=run_id,
+                config_hash=config_hash,
+                group_id=group_id,
+            )
+
+            if writer.flush():
+                for key in pending_index_keys:
+                    index.add(key)
+                pending_index_keys.clear()
+            index.connection.commit()
             writer.close()
-            events.emit("variant_completed", variant=variant["id"])
-            if total_input == len(prefetched):
-                total_input = sum(1 for _ in iter_rows_for_source(config, config["input"], row_limit))
-        merged = merge_parts(run_dir, expected_hashes)
+            errors_log.close()
+            events.emit("variant_completed", variant=variant_id)
+        merged = merge_parts(run_dir, expected_hashes, index.retryable_keys)
     finally:
         if created and backend is not None:
             backend.close()
         index.close()
+
     effective = {key: value for key, value in config.items() if not key.startswith("_")}
     (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(effective, sort_keys=False), encoding="utf-8")
     manifest = {
@@ -1290,211 +1888,160 @@ def run_streaming(config: dict[str, Any], backend: Any | None = None, row_limit:
         "result_rows": merged or total_results,
         "model": config["model"],
         "variants": selected,
-        "streaming": True,
         "cpu_resource_guard": config.get("_resource_guard"),
         "gpu_preflight": gpu(),
         "source_provenance": source_provenance(config),
         "resume_skipped_rows": seeded,
         "event_log": str(events.path),
     }
+    if streaming:
+        manifest["streaming"] = True
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     events.emit("run_completed", result_rows=manifest["result_rows"], gpu=gpu())
     return manifest
 
 
-def run(config: dict[str, Any], backend: Any | None = None, row_limit: int | None = None) -> dict[str, Any]:
-    if backend is None and config["model"].get("backend") == "local_vllm" and "_resource_guard" not in config:
-        apply_resource_guard(config)
-    if config.get("streaming", {}).get("enabled", False):
-        return run_streaming(config, backend, row_limit)
-    run_id = config["run"]["id"]
-    run_dir = resolve(config, config["output"]["directory"])
-    logging_config = config.get("logging", {})
-    if any(key in config.get("_override_keys", []) for key in ("run.id", "output.directory")):
-        logging_config = dict(logging_config)
-        logging_config["file"] = str(run_dir / "logs" / f"{run_id}.log")
-        logging_config["events"] = str(run_dir / "logs" / f"{run_id}.events.jsonl")
-    events = Events(
-        resolve(config, logging_config.get("file", f"logs/{run_id}.log")),
-        resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
-        logging_config.get("level", "INFO"),
-    )
-    rows = rows_for_source(config, config["input"], row_limit)
-    result_path = run_dir / "results.parquet"
-    existing = pq.read_table(result_path).to_pylist() if result_path.exists() else []
-    expected_hashes = {
-        str(item["id"]): variant_config_hash(config, materialize_variant(config, item)) for item in config["variants"]
-    }
-    existing = [row for row in existing if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))]
-    complete = {
-        (str(row["variant_id"]), str(row["input_row_id"]), saved_position(row))
-        for row in existing
-        if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))
-    }
-    previous = (
-        json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-        if (run_dir / "manifest.json").exists()
-        else {}
-    )
-    selected: dict[str, Any] = dict(previous.get("variants", {}))
-    created = False
-    correction_path = config.get("validation", {}).get("retry", {}).get("correction_prompt")
-    correction = read_asset(config, correction_path) if correction_path else None
-    try:
-        for configured_variant in config["variants"]:
-            variant = materialize_variant(config, configured_variant)
-            config_hash = expected_hashes[variant["id"]]
-            pending = [row for row in rows if (variant["id"], *row_key(row, config)) not in complete]
-            if not pending:
-                events.emit("variant_resumed", variant=variant["id"], skipped=len(rows))
-                continue
-            if backend is None:
-                backend = (
-                    FakeBackend()
-                    if config["model"]["backend"] == "fake"
-                    else VLLMBackend(config["model"], config.get("_resource_guard"))
-                )
-                created = True
-            schema_path = variant.get("validation", {}).get("schema")
-            schema = json.loads(read_asset(config, schema_path)) if schema_path else None
-            request_variant = {**variant, "_schema": schema}
-            prompts = [rendered_prompt(config, variant, row, schema) for row in pending]
-            group_id = prompt_group_id(config, variant, schema)
-            batch = dict(config.get("batch", {}))
-            maximum = int(config["model"].get("max_num_seqs", max(batch.get("candidates", [1]))))
-            batch["candidates"] = [item for item in batch.get("candidates", [1]) if int(item) <= maximum] or [maximum]
-            size, attempts = tune(
-                backend, request_variant, prompts, batch, events, bool(config["model"].get("synchronize_cuda", False))
-            )
-            size = min(size, maximum)
-            selected[variant["id"]] = {
-                "selected_batch_size": size,
-                "prompt_group_id": group_id,
-                "tuning": attempts,
-                "pending_rows": len(pending),
-            }
+def run_deferred_retries(
+    config: dict[str, Any],
+    queued: list[dict[str, Any]],
+    *,
+    backend: Backend,
+    events: Events,
+    index: ResumeIndex,
+    errors_log: ErrorLog,
+    append_output: Any,
+    request_variant: dict[str, Any],
+    schema: dict[str, Any] | None,
+    variant: dict[str, Any],
+    correction: str | None,
+    batch_config: dict[str, Any],
+    size: int,
+    run_id: str,
+    config_hash: str,
+    group_id: str,
+) -> int:
+    """Re-ask the model for rows that failed validation, in shrinking batches.
+
+    Deferring these to the end of a variant keeps the main loop at full batch
+    size; retries then run smaller and with a larger token budget, because the
+    usual cause of failure is a truncated structured response.
+    """
+    if not queued:
+        return 0
+    variant_id = str(variant["id"])
+    retry_settings = config.get("validation", {}).get("retry", {})
+    max_attempts = int(retry_settings.get("max_attempts", 0))
+    retry_divisor = max(2, int(retry_settings.get("batch_size_divisor", 2)))
+    token_multiplier = max(1, int(retry_settings.get("max_tokens_multiplier", 2)))
+    token_cap = int(retry_settings.get("max_tokens_cap", 256))
+    retry_batch = max(int(batch_config.get("min_size", 1)), size // retry_divisor)
+    written = 0
+
+    for retry_round in range(1, max_attempts + 1):
+        if not queued:
+            break
+        retry_max_tokens = min(token_cap, int(request_variant.get("max_tokens", 128)) * token_multiplier**retry_round)
+        retry_variant = {**request_variant, "max_tokens": retry_max_tokens}
+        events.emit(
+            "deferred_retry_started",
+            variant=variant_id,
+            retry_round=retry_round,
+            rows=len(queued),
+            batch_size=retry_batch,
+            max_tokens=retry_max_tokens,
+        )
+
+        def on_backoff(exc: BackendFailure, old_size: int, new_size: int, *, retry_round: int = retry_round) -> None:
+            nonlocal retry_batch
+            retry_batch = new_size
             events.emit(
-                "variant_started", variant=variant["id"], prompt_group_id=group_id, rows=len(pending), batch_size=size
+                "deferred_retry_backoff",
+                variant=variant_id,
+                retry_round=retry_round,
+                new_batch_size=new_size,
+                error=str(exc),
             )
-            offset = 0
-            while offset < len(pending):
-                chunk, chunk_prompts = pending[offset : offset + size], prompts[offset : offset + size]
-                sync_cuda(bool(config["model"].get("synchronize_cuda", False)))
-                started = time.perf_counter()
-                while True:
-                    try:
-                        responses = backend.generate(chunk_prompts, request_variant)
-                        if len(responses) != len(chunk):
-                            raise BackendFailure(
-                                f"Backend returned {len(responses)} responses for {len(chunk)} prompts"
-                            )
-                        break
-                    except BackendFailure as exc:
-                        minimum = int(batch.get("min_size", 1))
-                        if len(chunk) <= minimum:
-                            raise
-                        new_size = max(minimum, len(chunk) // 2)
-                        events.emit(
-                            "batch_runtime_backoff",
-                            variant=variant["id"],
-                            old_batch_size=len(chunk),
-                            new_batch_size=new_size,
-                            error=str(exc),
-                        )
-                        size = new_size
-                        selected[variant["id"]]["runtime_batch_size"] = size
-                        chunk = pending[offset : offset + size]
-                        chunk_prompts = prompts[offset : offset + size]
-                sync_cuda(bool(config["model"].get("synchronize_cuda", False)))
-                elapsed = max(time.perf_counter() - started, 1e-9)
-                batch_gpu = gpu()
-                for row, current_prompt, response in zip(chunk, chunk_prompts, responses):
-                    parsed, errors = validate_response(response.raw, schema)
-                    raw, count = response.raw, 1
-                    if request_variant["request_mode"] == "candidate_logprobs":
-                        parsed = {"candidates": response.candidate_logprobs or {}}
-                    if errors and correction and config.get("validation", {}).get("retry", {}).get("enabled"):
-                        events.emit(
-                            "retry_started", variant=variant["id"], input_row_id=str(row[config["input"]["id_column"]])
-                        )
-                        for _ in range(int(config["validation"]["retry"].get("max_attempts", 0))):
-                            retry_prompt = render(
-                                correction,
-                                retry_values(config, variant, row, schema, raw, errors),
-                            )
-                            raw = backend.generate([retry_prompt], request_variant)[0].raw
-                            parsed, errors = validate_response(raw, schema)
-                            count += 1
-                            if not errors:
-                                break
-                        events.emit(
-                            "retry_completed",
-                            variant=variant["id"],
-                            input_row_id=str(row[config["input"]["id_column"]]),
-                            attempts=count,
-                            validation_status="valid" if not errors else "invalid",
-                        )
-                    existing.append(
-                        {
-                            "run_id": run_id,
-                            "dataset_id": config["run"].get("dataset_id", "default"),
-                            "variant_id": variant["id"],
-                            "input_row_id": str(row[config["input"]["id_column"]]),
-                            "source_position": row["_source_position"],
-                            "input_text": str(row[config["input"]["text_column"]])
-                            if config["output"].get("include_text")
-                            else None,
-                            "gold_labels": serialise(row.get("_gold_labels")),
-                            "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                            "config_hash": config_hash,
-                            "prompt_group_id": group_id,
-                            "attempt_count": count,
-                            "raw_response": raw if config["output"].get("include_raw_response", True) else None,
-                            "parsed_output": serialise(parsed),
-                            "validation_status": "valid" if not errors else "invalid",
-                            "validation_errors": serialise(errors),
-                            "final_status": "completed" if not errors else "failed_validation",
-                            "batch_size": size,
-                            "latency_seconds": elapsed / len(chunk),
-                            "rows_per_second": len(chunk) / elapsed,
-                            "token_count": response.token_count,
-                            "gpu_snapshot": serialise(batch_gpu),
-                            "candidate_logprobs": serialise(response.candidate_logprobs),
-                        }
+            errors_log.write(
+                run_id=run_id,
+                dataset_id=config["run"].get("dataset_id", "default"),
+                variant_id=variant_id,
+                stage="deferred_retry_backoff",
+                error_kind="backend_batch_failure",
+                error=str(exc),
+                retry_round=retry_round,
+                failed_batch_size=old_size,
+                new_batch_size=new_size,
+            )
+
+        next_queue: list[dict[str, Any]] = []
+        offset = 0
+        while offset < len(queued):
+            retry_chunk = queued[offset : offset + retry_batch]
+            retry_prompts = [
+                render(correction, retry_values(config, variant, item["row"], schema, item["raw"], item["errors"]))
+                for item in retry_chunk
+            ]
+            started = time.perf_counter()
+            retry_responses, used = generate_with_backoff(
+                backend, retry_variant, retry_prompts, batch_config, on_backoff
+            )
+            retry_chunk = retry_chunk[:used]
+            elapsed = max(time.perf_counter() - started, 1e-9)
+            snapshot = serialise(gpu(max_age_seconds=5.0))
+
+            for item, response in zip(retry_chunk, retry_responses):
+                row = item["row"]
+                raw = response.raw
+                parsed, errors = interpret_response(response, schema, request_variant["request_mode"])
+                attempt_count = int(item["attempt_count"]) + 1
+                if errors:
+                    errors_log.write(
+                        run_id=run_id,
+                        dataset_id=config["run"].get("dataset_id", "default"),
+                        variant_id=variant_id,
+                        input_row_id=str(row[config["input"]["id_column"]]),
+                        source_position=int(row["_source_position"]),
+                        stage="deferred_validation",
+                        error_kind=error_kind(errors, response, retry_max_tokens),
+                        validation_errors=errors,
+                        attempt_count=attempt_count,
+                        batch_size=len(retry_chunk),
+                        max_tokens=retry_max_tokens,
+                        token_count=response.token_count,
+                        raw_response=raw,
                     )
-                events.emit(
-                    "batch_completed",
-                    variant=variant["id"],
-                    rows=len(chunk),
-                    latency_seconds=elapsed,
-                    rows_per_second=len(chunk) / elapsed,
-                    gpu=gpu(),
+                    if retry_round < max_attempts:
+                        next_queue.append(
+                            {**item, "response": response, "raw": raw, "errors": errors, "attempt_count": attempt_count}
+                        )
+                        continue
+                append_output(
+                    result_row(
+                        config,
+                        run_id=run_id,
+                        variant_id=variant_id,
+                        config_hash=config_hash,
+                        group_id=group_id,
+                        row=row,
+                        prompt_text=item["prompt"],
+                        raw=raw,
+                        parsed=parsed,
+                        errors=errors,
+                        attempt_count=attempt_count,
+                        token_count=response.token_count,
+                        batch_size=len(retry_chunk),
+                        latency_seconds=elapsed / len(retry_chunk),
+                        rows_per_second=len(retry_chunk) / elapsed,
+                        gpu_snapshot=snapshot,
+                        candidate_logprobs=response.candidate_logprobs,
+                    )
                 )
-                offset += len(chunk)
-            write_results(run_dir, existing)
-            events.emit("variant_completed", variant=variant["id"], rows=len(pending))
-    finally:
-        if created and backend is not None:
-            backend.close()
-    effective = {key: value for key, value in config.items() if not key.startswith("_")}
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(effective, sort_keys=False), encoding="utf-8")
-    manifest = {
-        "run_id": run_id,
-        "dataset_id": config["run"].get("dataset_id", "default"),
-        "input_rows": len(rows),
-        "result_rows": len(existing),
-        "model": config["model"],
-        "variants": selected,
-        "cpu_resource_guard": config.get("_resource_guard"),
-        "gpu_preflight": gpu(),
-        "source_provenance": source_provenance(config),
-        "resume_skipped_rows": len(complete),
-        "event_log": str(events.path),
-    }
-    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
-    events.emit("run_completed", result_rows=len(existing), gpu=gpu())
-    return manifest
+                written += 1
+            index.connection.commit()
+            offset += len(retry_chunk)
+        queued = next_queue
+        events.emit("deferred_retry_completed", variant=variant_id, retry_round=retry_round, remaining=len(queued))
+    return written
 
 
 def run_matrix(
@@ -1506,41 +2053,20 @@ def run_matrix(
     if config["model"].get("backend") == "local_vllm" and "_resource_guard" not in config:
         apply_resource_guard(config)
     base_output = resolve(config, config["output"]["directory"])
-    entries = dataset_entries(config)
-    if selected:
-        wanted = set(selected)
-        entries = [(identifier, source) for identifier, source in entries if identifier in wanted]
-        missing = wanted - {identifier for identifier, _ in entries}
-        if missing:
-            raise ValueError(f"Unknown dataset id(s): {', '.join(sorted(missing))}")
-    shared = (
-        FakeBackend()
-        if config["model"].get("backend") == "fake"
-        else VLLMBackend(config["model"], config.get("_resource_guard"))
-    )
+    entries = selected_entries(config, selected)
+    shared = make_backend(config["model"], config.get("_resource_guard"))
     manifests: list[dict[str, Any]] = []
     try:
         for dataset_id, source in entries:
-            dataset_config = deepcopy(config)
-            dataset_config.pop("datasets", None)
-            dataset_config["input"] = source
-            dataset_config["run"] = {
-                **config["run"],
-                "id": f"{config['run']['id']}__{dataset_id}",
-                "dataset_id": dataset_id,
-                **dataset_runtime(source),
-            }
-            dataset_config["output"] = {
-                **config["output"],
-                "directory": str(base_output / f"dataset={dataset_id}"),
-            }
-            logging_config = dict(config.get("logging", {}))
+            lane = dataset_config(config, dataset_id, source, base_output)
             # Matrix workers must never share the YAML's default log names;
             # derive them from the effective output directory and run id.
-            logging_config["file"] = str(base_output / "logs" / f"{dataset_id}.log")
-            logging_config["events"] = str(base_output / "logs" / f"{dataset_id}.events.jsonl")
-            dataset_config["logging"] = logging_config
-            manifests.append(run(dataset_config, shared, row_limit=row_limit))
+            lane["logging"] = {
+                **config.get("logging", {}),
+                "file": str(base_output / "logs" / f"{dataset_id}.log"),
+                "events": str(base_output / "logs" / f"{dataset_id}.events.jsonl"),
+            }
+            manifests.append(run(lane, shared, row_limit=row_limit))
     finally:
         shared.close()
     summary = {
@@ -1586,28 +2112,11 @@ def prepare_matrix(config: dict[str, Any], selected: list[str] | None = None) ->
     """Prepare one independent vLLM JSONL request file per selected dataset."""
     if "datasets" not in config:
         return [prepare(config)]
-    entries = dataset_entries(config)
-    if selected:
-        wanted = set(selected)
-        entries = [(identifier, source) for identifier, source in entries if identifier in wanted]
-        missing = wanted - {identifier for identifier, _ in entries}
-        if missing:
-            raise ValueError(f"Unknown dataset id(s): {', '.join(sorted(missing))}")
     base_output = resolve(config, config["output"]["directory"])
-    paths: list[Path] = []
-    for dataset_id, source in entries:
-        dataset_config = deepcopy(config)
-        dataset_config.pop("datasets", None)
-        dataset_config["input"] = source
-        dataset_config["run"] = {
-            **config["run"],
-            "id": f"{config['run']['id']}__{dataset_id}",
-            "dataset_id": dataset_id,
-            **dataset_runtime(source),
-        }
-        dataset_config["output"] = {**config["output"], "directory": str(base_output / f"dataset={dataset_id}")}
-        paths.append(prepare(dataset_config))
-    return paths
+    return [
+        prepare(dataset_config(config, dataset_id, source, base_output))
+        for dataset_id, source in selected_entries(config, selected)
+    ]
 
 
 def variant_schema(config: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any] | None:
@@ -1632,14 +2141,41 @@ def variant_schema(config: dict[str, Any], variant: dict[str, Any]) -> dict[str,
 
 
 def materialize_variant(config: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
-    materialized = deepcopy(variant)
-    source = materialized.get("candidates_from")
+    """Resolve `candidates_from` into a concrete candidate list.
+
+    A shallow copy is enough and is deliberate: this sits in the per-row prompt
+    path, where a deepcopy of every variant was pure overhead. Nothing mutates
+    the nested config, so sharing it is safe.
+    """
+    source = variant.get("candidates_from")
     if source == "dataset_labels":
-        materialized["candidates"] = list(config.get("run", {}).get("dataset_labels", []))
-    elif source == "code_labels":
-        mapping = config.get("run", {}).get("code_labels", {})
-        materialized["candidates"] = list(mapping)
-    return materialized
+        return {**variant, "candidates": list(config.get("run", {}).get("dataset_labels", []))}
+    if source == "code_labels":
+        return {**variant, "candidates": list(config.get("run", {}).get("code_labels", {}))}
+    return dict(variant)
+
+
+def prompt_values(
+    config: dict[str, Any], variant: dict[str, Any], row: dict[str, Any], schema: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Build the placeholder values that every prompt template may reference.
+
+    `variant` must already be materialised, so `candidates` reflects any
+    `candidates_from` indirection.
+    """
+    run_config = config.get("run", {})
+    candidates = ", ".join(str(item) for item in variant.get("candidates", []))
+    return {
+        "text": row[config["input"]["text_column"]],
+        "row_id": row[config["input"]["id_column"]],
+        "dataset_id": run_config.get("dataset_id", "default"),
+        "candidates": candidates,
+        "labels": ", ".join(str(item) for item in run_config.get("dataset_labels", [])),
+        "candidate_mapping": ", ".join(f"{code}={label}" for code, label in run_config.get("code_labels", {}).items())
+        or candidates,
+        "question": run_config.get("binary_question", "Does this text express the target value?"),
+        "output_schema": json.dumps(schema or {}, sort_keys=True),
+    }
 
 
 def rendered_prompt(
@@ -1648,22 +2184,52 @@ def rendered_prompt(
     variant = materialize_variant(config, variant)
     if schema is None and variant.get("validation", {}).get("schema"):
         schema = variant_schema(config, variant)
-    values = {
-        "text": row[config["input"]["text_column"]],
-        "row_id": row[config["input"]["id_column"]],
-        "dataset_id": config["run"].get("dataset_id", "default"),
-        "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
-        "labels": ", ".join(str(item) for item in config.get("run", {}).get("dataset_labels", [])),
-        "candidate_mapping": ", ".join(
-            f"{code}={label}" for code, label in config.get("run", {}).get("code_labels", {}).items()
-        )
-        or ", ".join(str(item) for item in variant.get("candidates", [])),
-        "question": config.get("run", {}).get("binary_question", "Does this text express the target value?"),
-        "output_schema": json.dumps(schema or {}, sort_keys=True),
-    }
+    values = prompt_values(config, variant, row, schema)
     values.update(prompt_part_values(config, values))
-    content = prompt(config, variant["prompts"], values)
-    return content
+    return prompt(config, variant["prompts"], values)
+
+
+ROW_SPECIFIC_TOKENS = ("text", "row_id")
+
+
+def system_prompt_paths(variant: dict[str, Any]) -> list[str]:
+    """Normalise `system_prompt` to a list; a bare string is allowed for one file."""
+    declared = variant.get("system_prompt")
+    if not declared:
+        return []
+    return [declared] if isinstance(declared, str) else list(declared)
+
+
+def system_prompt(config: dict[str, Any], variant: dict[str, Any], schema: dict[str, Any] | None) -> str | None:
+    """Render a variant's system turn, or None when it declares no system prompt.
+
+    The system turn carries instructions, not data, so it is rendered once per
+    variant rather than once per row. Referencing a row placeholder is therefore
+    rejected outright: it would silently render empty for every row rather than
+    fail, which is the kind of prompt bug that only shows up in the results.
+    """
+    paths = system_prompt_paths(variant)
+    if not paths:
+        return None
+    for path in paths:
+        raw = read_asset(config, path)
+        for token in ROW_SPECIFIC_TOKENS:
+            if f"{{{{{token}}}}}" in raw:
+                raise ValueError(
+                    f"{variant['id']}: system_prompt may not use {{{{{token}}}}} ({path}). "
+                    "It is rendered once per variant; put row placeholders in `prompts`."
+                )
+    source = config["input"]
+    blank_row = {source["id_column"]: "", source["text_column"]: ""}
+    values = prompt_values(config, variant, blank_row, schema)
+    values.update(prompt_part_values(config, values))
+    return prompt(config, paths, values)
+
+
+def conversation(system: str | None, user: str) -> list[dict[str, str]]:
+    """Build the chat turns for one prompt, with the system turn when present."""
+    turns = [{"role": "system", "content": system}] if system else []
+    return turns + [{"role": "user", "content": user}]
 
 
 def retry_values(
@@ -1675,21 +2241,9 @@ def retry_values(
     errors: list[str],
 ) -> dict[str, Any]:
     variant = materialize_variant(config, variant)
-    values = {
-        "text": row[config["input"]["text_column"]],
-        "row_id": row[config["input"]["id_column"]],
-        "dataset_id": config["run"].get("dataset_id", "default"),
-        "candidates": ", ".join(str(item) for item in variant.get("candidates", [])),
-        "labels": ", ".join(str(item) for item in config.get("run", {}).get("dataset_labels", [])),
-        "candidate_mapping": ", ".join(
-            f"{code}={label}" for code, label in config.get("run", {}).get("code_labels", {}).items()
-        )
-        or ", ".join(str(item) for item in variant.get("candidates", [])),
-        "question": config.get("run", {}).get("binary_question", "Does this text express the target value?"),
-        "output_schema": json.dumps(schema or {}, sort_keys=True),
-        "raw_response": raw,
-        "validation_errors": "; ".join(errors),
-    }
+    values = prompt_values(config, variant, row, schema)
+    values["raw_response"] = raw
+    values["validation_errors"] = "; ".join(errors)
     values.update(prompt_part_values(config, values))
     return values
 
@@ -1701,7 +2255,7 @@ def request_for_row(
     content = rendered_prompt(config, variant, row, schema)
     body: dict[str, Any] = {
         "model": config["model"]["name"],
-        "messages": [{"role": "user", "content": content}],
+        "messages": conversation(system_prompt(config, variant, schema), content),
         "temperature": 0,
     }
     if variant["request_mode"] == "candidate_logprobs":
@@ -1709,7 +2263,7 @@ def request_for_row(
             {
                 "max_completion_tokens": 1,
                 "logprobs": True,
-                "top_logprobs": min(20, len(variant["candidates"]) + 5),
+                "top_logprobs": top_logprobs_count(variant["candidates"]),
             }
         )
     else:
@@ -1743,18 +2297,36 @@ def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, list[tupl
     content = (choice.get("message") or {}).get("content")
     if content is None:
         return None, "missing_chat_completion_content", None
-    raw_observed: list[tuple[str, float]] = []
-    for token in (choice.get("logprobs") or {}).get("content") or []:
-        for candidate in token.get("top_logprobs") or []:
-            raw_observed.append((str(candidate.get("token", "")), float(candidate.get("logprob", -float("inf")))))
+    raw_observed = extract_top_logprobs((choice.get("logprobs") or {}).get("content"))
     return str(content), None, raw_observed or None
 
 
+def _response_key(custom_id: str) -> tuple[tuple[str, str, int], int] | None:
+    """Split a retry `custom_id` into its result key and attempt number.
+
+    Retry ids are `retry:<variant>:<row_id>:<position>:<attempt>`. Parsing from
+    the outside in keeps row ids that themselves contain a colon intact; only
+    the variant id is assumed colon-free, which is what building the id assumed
+    in the first place. Returns None for ordinary (non-retry) ids.
+    """
+    if not custom_id.startswith("retry:"):
+        return None
+    body, attempt = custom_id.rsplit(":", 1)
+    variant_id, remainder = body[len("retry:") :].split(":", 1)
+    row_id, position = remainder.rsplit(":", 1)
+    return (variant_id, row_id, int(position)), int(attempt)
+
+
 def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, Any]:
+    """Fold externally produced `vllm run-batch` responses into the result contract."""
     source = Path(response_path)
     if source.is_dir():
         source = source / "responses.jsonl"
+
+    # Index the responses once. Scanning them per row instead is quadratic, and
+    # the ProtoEthos lane parses millions of rows.
     responses: dict[str, dict[str, Any]] = {}
+    retries: dict[tuple[str, str, int], list[tuple[int, dict[str, Any]]]] = {}
     for line in source.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -1763,46 +2335,55 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
         if custom_id in responses:
             raise ValueError(f"Duplicate custom_id in batch response: {custom_id}")
         responses[custom_id] = item
+        parsed_key = _response_key(custom_id)
+        if parsed_key is not None:
+            key, attempt = parsed_key
+            retries.setdefault(key, []).append((attempt, item))
+
     run_id = config["run"]["id"]
     run_dir = resolve(config, config["output"]["directory"])
-    logging_config = config.get("logging", {})
-    if any(key in config.get("_override_keys", []) for key in ("run.id", "output.directory")):
-        logging_config = dict(logging_config)
-        logging_config["file"] = str(run_dir / "logs" / f"{run_id}.log")
-        logging_config["events"] = str(run_dir / "logs" / f"{run_id}.events.jsonl")
-    events = Events(
-        resolve(config, logging_config.get("file", f"logs/{run_id}.log")),
-        resolve(config, logging_config.get("events", f"logs/{run_id}.events.jsonl")),
-        logging_config.get("level", "INFO"),
-    )
+    events = make_events(config, run_dir, run_id)
     rows = rows_for_source(config, config["input"])
     result_path = run_dir / "results.parquet"
-    saved = pq.read_table(result_path).to_pylist() if result_path.exists() else []
     expected_hashes = {
         str(item["id"]): variant_config_hash(config, materialize_variant(config, item)) for item in config["variants"]
     }
-    saved = [row for row in saved if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))]
-    complete = {
-        (str(row["variant_id"]), str(row["input_row_id"]), saved_position(row))
-        for row in saved
+    saved = [
+        row
+        for row in (pq.read_table(result_path).to_pylist() if result_path.exists() else [])
         if row.get("config_hash") == expected_hashes.get(str(row["variant_id"]))
-    }
+    ]
+    # Last write wins, matching the original reverse-order search for a row to update.
+    saved_by_key = {(str(row["variant_id"]), str(row["input_row_id"]), saved_position(row)): row for row in saved}
+    complete = set(saved_by_key)
     retry_settings = config.get("validation", {}).get("retry", {})
     correction_path = retry_settings.get("correction_prompt")
     correction = read_asset(config, correction_path) if correction_path else None
+    retry_pending = bool(
+        correction and retry_settings.get("enabled") and int(retry_settings.get("max_attempts", 0)) >= 1
+    )
     retry_requests: list[dict[str, Any]] = []
 
     def add_retry_request(
-        variant: dict[str, Any], row: dict[str, Any], raw: str, errors: list[str], attempt: int
+        variant: dict[str, Any],
+        schema: dict[str, Any] | None,
+        row: dict[str, Any],
+        raw: str,
+        errors: list[str],
+        attempt: int,
     ) -> None:
+        """Queue one bounded retry request for a row that failed validation."""
+        # A row that validated has nothing to correct. Without this the retry
+        # file holds every parsed row, and re-running the batch re-asks the
+        # model questions it already answered correctly.
+        if not errors:
+            return
         if not correction or not retry_settings.get("enabled") or attempt > int(retry_settings.get("max_attempts", 0)):
             return
-        values = retry_values(config, variant, row, variant_schema(config, variant), raw, errors)
-        retry_prompt = render(correction, values)
-        schema = variant_schema(config, variant)
+        retry_prompt = render(correction, retry_values(config, variant, row, schema, raw, errors))
         body: dict[str, Any] = {
             "model": config["model"]["name"],
-            "messages": [{"role": "user", "content": retry_prompt}],
+            "messages": conversation(system_prompt(config, variant, schema), retry_prompt),
             "temperature": 0,
             "max_completion_tokens": variant.get("max_tokens", 128),
         }
@@ -1811,7 +2392,7 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                 {
                     "max_completion_tokens": 1,
                     "logprobs": True,
-                    "top_logprobs": min(20, len(variant.get("candidates", [])) + 5),
+                    "top_logprobs": top_logprobs_count(variant.get("candidates", [])),
                 }
             )
         elif schema:
@@ -1830,22 +2411,21 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
 
     for configured_variant in config["variants"]:
         variant = materialize_variant(config, configured_variant)
-        config_hash = expected_hashes[variant["id"]]
-        schema_path = variant.get("validation", {}).get("schema")
-        schema = json.loads(read_asset(config, schema_path)) if schema_path else None
+        variant_id = str(variant["id"])
+        config_hash = expected_hashes[variant_id]
+        # This must be the same schema `prepare` sent to the batch server: it is
+        # what constrained the model, what the {{output_schema}} token rendered,
+        # and therefore what the response can legitimately be judged against.
+        schema = variant_schema(config, variant)
         group_id = prompt_group_id(config, variant, schema)
         for row in rows:
             row_id = str(row[config["input"]["id_column"]])
-            key = (variant["id"], *row_key(row, config))
-            retry_items = [
-                item
-                for item_id, item in responses.items()
-                if item_id.startswith(f"retry:{variant['id']}:{row_id}:{row['_source_position']}:")
-            ]
+            key = (variant_id, *row_key(row, config))
+            retry_items = retries.get(key, [])
             if key in complete and not retry_items:
                 continue
             current_prompt = rendered_prompt(config, variant, row, schema)
-            custom_id = f"{variant['id']}:{row_id}:{row['_source_position']}"
+            custom_id = f"{variant_id}:{row_id}:{row['_source_position']}"
             if custom_id not in responses:
                 raw, batch_error, observed = None, "missing_batch_response", None
             else:
@@ -1860,35 +2440,20 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                 scores = aggregate_candidate_logprobs(observed, variant["candidates"])
                 parsed, errors = {"candidates": scores}, []
             attempt_count = 1
+
             if retry_items:
-                retry_id = max(
-                    (
-                        item_id
-                        for item_id in responses
-                        if item_id.startswith(f"retry:{variant['id']}:{row_id}:{row['_source_position']}:")
-                    ),
-                    key=lambda x: int(x.rsplit(":", 1)[-1]),
-                )
-                retry_raw, retry_error, retry_observed = _batch_text(responses[retry_id])
+                attempt_count, latest = max(retry_items, key=lambda pair: pair[0])
+                retry_raw, retry_error, retry_observed = _batch_text(latest)
                 if retry_raw is not None:
                     raw = retry_raw
                     parsed, errors = validate_response(raw, schema)
-                    attempt_count = int(retry_id.rsplit(":", 1)[-1])
                     if variant["request_mode"] == "candidate_logprobs" and retry_observed is not None:
                         scores = aggregate_candidate_logprobs(retry_observed, variant["candidates"])
                         parsed, errors = {"candidates": scores}, []
                 else:
+                    attempt_count = 1
                     errors = [retry_error or "missing_retry_response"]
-                target = next(
-                    (
-                        item
-                        for item in reversed(saved)
-                        if item["variant_id"] == variant["id"]
-                        and item["input_row_id"] == row_id
-                        and saved_position(item) == int(row["_source_position"])
-                    ),
-                    None,
-                )
+                target = saved_by_key.get(key)
                 if target is not None:
                     target.update(
                         {
@@ -1901,45 +2466,28 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                             "candidate_logprobs": serialise(scores),
                         }
                     )
-                    add_retry_request(variant, row, raw or "", errors, attempt_count + 1)
+                    add_retry_request(variant, schema, row, raw or "", errors, attempt_count + 1)
                     continue
-            add_retry_request(variant, row, raw or "", errors, attempt_count + 1)
-            saved.append(
-                {
-                    "run_id": run_id,
-                    "dataset_id": config["run"].get("dataset_id", "default"),
-                    "variant_id": variant["id"],
-                    "input_row_id": row_id,
-                    "source_position": row["_source_position"],
-                    "input_text": str(row[config["input"]["text_column"]])
-                    if config["output"].get("include_text")
-                    else None,
-                    "gold_labels": serialise(row.get("_gold_labels")),
-                    "prompt_hash": hashlib.sha256(current_prompt.encode()).hexdigest(),
-                    "config_hash": config_hash,
-                    "prompt_group_id": group_id,
-                    "attempt_count": attempt_count,
-                    "raw_response": raw if config["output"].get("include_raw_response", True) else None,
-                    "parsed_output": serialise(parsed),
-                    "validation_status": "valid" if not errors else "invalid",
-                    "validation_errors": serialise(errors),
-                    "final_status": "completed"
-                    if not errors
-                    else (
-                        "retry_pending"
-                        if correction
-                        and retry_settings.get("enabled")
-                        and int(retry_settings.get("max_attempts", 0)) >= 1
-                        else "failed_validation"
-                    ),
-                    "batch_size": None,
-                    "latency_seconds": None,
-                    "rows_per_second": None,
-                    "token_count": None,
-                    "gpu_snapshot": None,
-                    "candidate_logprobs": serialise(scores),
-                }
+
+            add_retry_request(variant, schema, row, raw or "", errors, attempt_count + 1)
+            row_output = result_row(
+                config,
+                run_id=run_id,
+                variant_id=variant_id,
+                config_hash=config_hash,
+                group_id=group_id,
+                row=row,
+                prompt_text=current_prompt,
+                raw=raw,
+                parsed=parsed,
+                errors=errors,
+                attempt_count=attempt_count,
+                candidate_logprobs=scores,
+                final_status=None if not errors else ("retry_pending" if retry_pending else "failed_validation"),
             )
+            saved.append(row_output)
+            saved_by_key[key] = row_output
+
     write_results(run_dir, saved)
     retry_path = None
     if retry_requests:
@@ -2012,13 +2560,7 @@ def response_from_api(completion: Any, variant: dict[str, Any]) -> Response:
     raw = str(getattr(choice.message, "content", None) or "")
     usage = getattr(completion, "usage", None)
     token_count = int(getattr(usage, "completion_tokens", 0) or 0)
-    raw_observed: list[tuple[str, float]] = []
-    logprobs = getattr(choice, "logprobs", None)
-    for token in getattr(logprobs, "content", None) or []:
-        for candidate in getattr(token, "top_logprobs", None) or []:
-            raw_observed.append(
-                (str(getattr(candidate, "token", "")), float(getattr(candidate, "logprob", -float("inf"))))
-            )
+    raw_observed = extract_top_logprobs(getattr(getattr(choice, "logprobs", None), "content", None))
     if variant["request_mode"] == "candidate_logprobs":
         scores = aggregate_candidate_logprobs(raw_observed, variant["candidates"])
         return Response(json.dumps({"candidates": scores}), token_count, scores)
@@ -2051,10 +2593,11 @@ def benchmark_python(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict
     )
     load_seconds = time.perf_counter() - load_started
     entries: list[tuple[dict[str, Any], list[str]]] = []
-    for variant in config["variants"]:
+    for configured_variant in config["variants"]:
+        variant = materialize_variant(config, configured_variant)
         schema = variant_schema(config, variant)
-        request_variant = {**variant, "_schema": schema}
-        prompts = [request_for_row(config, variant, row, schema)["body"]["messages"][0]["content"] for row in rows]
+        request_variant = {**variant, "_schema": schema, "_system": system_prompt(config, variant, schema)}
+        prompts = [rendered_prompt(config, variant, row, schema) for row in rows]
         entries.append((request_variant, prompts))
     try:
         if warmup:
@@ -2325,16 +2868,19 @@ def self_test(config: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    # Every command except gpu-preflight takes the same config/override flags.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--config", required=True)
+    common.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+    common.add_argument("--run-id")
+    common.add_argument("--model")
+    common.add_argument("--backend", choices=["local_vllm", "nvidia_api", "fake"])
+    common.add_argument("--output")
+
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("validate", "run", "run-matrix", "prepare", "prepare-matrix", "batch-command", "self-test"):
-        command = commands.add_parser(name)
-        command.add_argument("--config", required=True)
-        command.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
-        command.add_argument("--run-id")
-        command.add_argument("--model")
-        command.add_argument("--backend", choices=["local_vllm", "fake"])
-        command.add_argument("--output")
+        command = commands.add_parser(name, parents=[common])
         if name == "batch-command":
             command.add_argument("--dataset", help="Dataset id when using a matrix configuration")
         if name in {"run", "run-matrix"}:
@@ -2342,27 +2888,15 @@ def main() -> int:
         if name in {"run-matrix", "prepare-matrix"}:
             command.add_argument("--datasets", help="Comma-separated dataset ids to run (default: all)")
     commands.add_parser("gpu-preflight", help="Verify host driver access and CUDA availability in this uv environment")
-    benchmark_parser = commands.add_parser("benchmark")
-    benchmark_parser.add_argument("--config", required=True)
-    benchmark_parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
-    benchmark_parser.add_argument("--run-id")
-    benchmark_parser.add_argument("--model")
-    benchmark_parser.add_argument("--backend", choices=["local_vllm", "fake"])
-    benchmark_parser.add_argument("--output")
+    benchmark_parser = commands.add_parser("benchmark", parents=[common])
     benchmark_parser.add_argument(
         "--approaches",
         default=None,
         help="Comma-separated subset of api,run-batch,python (default: all configured approaches)",
     )
     benchmark_parser.add_argument("--rows", type=int, default=None, help="Limit benchmark input rows")
-    parse = commands.add_parser("parse")
-    parse.add_argument("--config", required=True)
+    parse = commands.add_parser("parse", parents=[common])
     parse.add_argument("--responses", required=True)
-    parse.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
-    parse.add_argument("--run-id")
-    parse.add_argument("--model")
-    parse.add_argument("--backend", choices=["local_vllm", "fake"])
-    parse.add_argument("--output")
     parse.add_argument("--dataset", help="Dataset id when using a matrix configuration")
     args = parser.parse_args()
     if args.command == "gpu-preflight":

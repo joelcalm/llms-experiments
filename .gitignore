@@ -89,6 +89,7 @@ myenv/
 outputs/
 logs/
 results/
+internal_documentation/
 *.parquet
 *.jsonl
 protoethosv2_3m_finalqc_20260512.csv
@@ -103,7 +104,6 @@ protoethosv2_3m_finalqc_20260512.csv
 scratch/
 tmp/
 temp_*
-test_*
 *copy.*
 * copy.*
 * - copy.*
@@ -111,3 +111,13 @@ test_*
 *.tmp
 *.log
 
+# uv cache (pinned to the project by [tool.uv] cache-dir in pyproject.toml)
+.uv-cache/
+
+# Committed test suite and fixtures. These negations must stay last: the broad
+# `*.parquet` / `*.jsonl` rules above would otherwise swallow the golden files.
+!tests/
+!tests/**
+!experiment-cli/data/*.parquet
+# ...but the negations above also re-include the compiled cache; keep it out.
+tests/**/__pycache__/

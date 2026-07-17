@@ -12,7 +12,6 @@ Here is a bird's-eye view of the repository layout:
 llms-experiments/
   experiment-cli/
     experiment_cli.py        # Main execution CLI (runs validation, inference, and benchmarks)
-    AUDIT.md                 # CLI audit logs & validation history
     README.md                # Fast setup and guide for the experiment CLI
     data/
       smoke.parquet          # Smoke test input dataset
@@ -27,6 +26,11 @@ llms-experiments/
   docs/                      # Auxiliary documentation
     codebase_guide.md        # This file
     strategies_review.md     # In-depth review of classification strategies
+  condor/                    # HTCondor batch path (site-agnostic, paths from RUN_ROOT)
+    submit_*.sub             # Condor submit files, one queue per model matrix
+    run_matrix_worker.sh     # Per-slot entry point: runs experiment_cli.py run-matrix
+    submit_when_ready.sh     # Orchestrator: submits once the environment is staged
+    README.md                # RUN_ROOT contract and expected layout
   slurm/                     # Slurm cluster batch-inference path
     submit-vllm.sh           # Slurm cluster scheduler submission script
     batch_infer_simple.py    # Batch inference script (driven by submit-vllm.sh)
@@ -36,6 +40,8 @@ llms-experiments/
     annotate.py              # Standalone sentence annotation script
     run_vllm.py              # Standalone vLLM server integration script
   prompts_legacy/            # Archived demo prompt examples
+  tests/                     # pytest suite (fake backend, no GPU)
+    golden/                  # snapshots pinning result rows + manifests
   pyproject.toml             # Python dependencies & tool settings (uv.lock is the lockfile)
 ```
 
@@ -99,6 +105,11 @@ All configuration variables are managed via YAML files (e.g., [experiments/local
 * **`model`**: Identifies the model identifier, backend (e.g. `local_vllm`), memory parameters, and optional GPU limits.
 * **`resources`**: Controls core allocation (`cores: auto`) and caps PyTorch/BLAS thread pools to `1` per worker.
 * **`variants`**: Configures the individual experiments (e.g. JSON validation rules, candidate sets, request modes).
+  A variant's `prompts` are concatenated into the user turn. An optional
+  `system_prompt` (one path or a list) is rendered into a separate system turn
+  and sent by every backend. Because it is instructions rather than data, it is
+  rendered once per variant, so it may use `{{labels}}` or `{{output_schema}}`
+  but not `{{text}}`/`{{row_id}}` — those raise rather than render empty.
 * **`batch`**: Defines batch sizing policy (such as `mode: auto`, starting batch candidates, and halving on failure).
 
 ---
@@ -137,7 +148,20 @@ This framework features production-ready optimizations for high-throughput GPU w
 
 ## 6. Secondary / Standalone Scripts
 
-Apart from the primary CLI, the codebase includes several utility scripts.
+Apart from the primary CLI, the codebase includes several utility scripts. The
+two cluster schedulers live in separate folders — HTCondor in `condor/`, Slurm
+in `slurm/` — so each cluster's jobs are submitted independently.
+
+**HTCondor cluster path (`condor/`):**
+
+* **`condor/submit_*.sub`**: HTCondor submit files. Each queues one
+  `experiment_cli.py run-matrix` worker per model (`condor_submit condor/<file>.sub`). Paths resolve
+  from `RUN_ROOT` at submit time, so the files carry no site-specific details.
+* **`condor/run_matrix_worker.sh`**: The per-slot entry point a `.sub` executes; it drives one full
+  matrix through `experiment_cli.py` on a single GPU slot.
+* **`condor/submit_when_ready.sh`**: Waits for the one-time environment setup to finish, then
+  submits the matrix.
+* **`condor/README.md`**: The `RUN_ROOT` contract and the expected directory layout.
 
 **Slurm cluster batch path (`slurm/`):**
 

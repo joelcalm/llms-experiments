@@ -1,0 +1,28 @@
+universe = vanilla
+initialdir = $ENV(RUN_ROOT)
+executable = $ENV(RUN_ROOT)/code/condor/run_matrix_worker.sh
+
+request_gpus = 1
+request_cpus = 16
+request_memory = 128GB
+request_disk = 160GB
+requirements = regexp("A100", TARGET.Gpus_DeviceName)
+priority = -100
+
+should_transfer_files = NO
+stream_output = True
+stream_error = True
+getenv = True
+environment = "RUN_ROOT=$ENV(RUN_ROOT) MODEL_SLUG=$(model_slug) MODEL_ID=$(model_id) GPU_MEMORY_UTILIZATION=$(gpu_memory_utilization) MAX_NUM_SEQS=$(max_num_seqs) MM_ENCODER_ATTN_BACKEND=$(mm_encoder_attn_backend)"
+
+output = $ENV(RUN_ROOT)/logs/$(model_slug).$(Cluster).$(Process).out
+error = $ENV(RUN_ROOT)/logs/$(model_slug).$(Cluster).$(Process).err
+log = $ENV(RUN_ROOT)/logs/$(model_slug).$(Cluster).$(Process).log
+
++JobBatchName = "llms-experiment-cli-additional-a100-matrices"
+periodic_remove = (JobStatus == 2 && RemoteWallClockTime > 172800)
+
+queue model_slug,model_id,gpu_memory_utilization,max_num_seqs,mm_encoder_attn_backend from (
+  google_gemma_4_12b_it google/gemma-4-12b-it 0.85 64 NONE
+  qwen_qwen3_5_9b Qwen/Qwen3.5-9B 0.90 128 TORCH_SDPA
+)

@@ -16,8 +16,8 @@ datasets:
       records_key: Tweets
       labels_column: annotations
       label_value_key: annotation
-      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, nh, nm, non-moral, purity, subversion]
-      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: nh, J: nm, K: non-moral, L: purity, M: subversion}
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
       binary_question: Does this text express care?
       prompt_parts: {theory: experiment-cli/prompt/theory-mft.md, definitions: experiment-cli/prompt/definitions-mft.md}
   - id: mfrc
@@ -27,8 +27,8 @@ datasets:
       id_column: item_id
       text_column: text
       labels_column: gold_labels
-      labels: [authority, care, fairness, loyalty, sanctity]
-      code_labels: {A: authority, B: care, C: fairness, D: loyalty, E: sanctity}
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
       binary_question: Does this text express care?
       prompt_parts: {theory: experiment-cli/prompt/theory-mft.md, definitions: experiment-cli/prompt/definitions-mft.md}
   - id: valueeval
@@ -53,7 +53,7 @@ datasets:
       id_column: id
       text_column: sentence
       labels_column: value_id
-      where: {theory_id: mft}
+      where: {theory_id: mft, slice: core}
       labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
       code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
       binary_question: Does this text express authority?
@@ -66,7 +66,7 @@ datasets:
       id_column: id
       text_column: sentence
       labels_column: value_id
-      where: {theory_id: shvt}
+      where: {theory_id: shvt, slice: core}
       labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
       code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
       binary_question: Does this text express achievement?
@@ -108,17 +108,17 @@ resources:
 variants:
   - id: single_label_json
     request_mode: generate
-    max_tokens: 16
+    max_tokens: 64
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-single-label.json, enum_from: dataset_labels}
   - id: multi_label_json
     request_mode: generate
-    max_tokens: 32
+    max_tokens: 96
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-multi-label.json, enum_from: dataset_labels}
   - id: ordinal_score_json
     request_mode: generate
-    max_tokens: 16
+    max_tokens: 64
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-ordinal-score.json}
   - id: single_label_code_logits
@@ -146,6 +146,12 @@ validation:
   retry:
     enabled: true
     max_attempts: 2
+    # Keep the high-throughput pass free of one-row corrections. Invalid or
+    # truncated responses are logged and retried after it in smaller batches.
+    deferred: true
+    batch_size_divisor: 2
+    max_tokens_multiplier: 2
+    max_tokens_cap: 256
     correction_prompt: experiment-cli/prompt/retry-structured-output.md
 
 output:
