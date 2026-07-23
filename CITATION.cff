@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use llms-experiments, please cite this software."
+title: "llms-experiments"
+type: software
+version: 0.2.0
+authors:
+  - family-names: Lobo-Santos
+    given-names: Antonio

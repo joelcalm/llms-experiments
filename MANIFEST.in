@@ -1,0 +1,10 @@
+include CHANGELOG.md
+include CITATION.cff
+include CONTRIBUTING.md
+include SECURITY.md
+recursive-include docs *.md *.json
+recursive-include experiments *.yaml
+recursive-include experiment-cli *.py *.md *.json *.jsonl *.tsv *.csv
+prune experiment-cli/outputs
+recursive-include condor *.md *.sh *.htcondor
+recursive-include slurm *.md *.sh

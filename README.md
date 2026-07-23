@@ -1,104 +1,97 @@
-# LLMs Experiments
+# llms-experiments
 
-A configuration-driven runner and script utilities for local Large Language Model experiments.
-One YAML file chooses the input, model, prompts, output schemas, and batching; the runner
-([`experiment-cli/`](experiment-cli/)) stays domain-agnostic.
+`llms-experiments` is an installable CLI for configuration-driven LLM
+inference with durable, resumable Parquet outputs. It supports an in-process
+vLLM engine, vendor-neutral OpenAI-compatible endpoints, external
+`vllm run-batch`, and a deterministic fake backend for tests.
 
-## Getting Started
+This project does not calculate accuracy, F1, diagnostic axioms, or aggregate
+evaluation reports. Its interoperability boundary is the documented result
+contract 2.0.
 
-A short path from zero to a verified run. **Steps 1–3 need no GPU** — they prove the install
-and the full pipeline on a built-in fake backend.
+## Install
 
-1. **Install [uv](https://github.com/astral-sh/uv)** (skip if you already have it):
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
+Python 3.11–3.13 is supported. The default installation is CPU-light and can
+validate configs, call endpoints, prepare/parse external batches, and run tests:
 
-2. **Install dependencies.** `uv sync` creates `.venv/` and installs everything:
-   ```bash
-   uv sync                    # GPU-capable environment (default)
-   uv sync --no-group gpu     # CPU-only: 28 packages instead of 191, skips ~9 GB of CUDA wheels
-   ```
-   The CPU-only install is enough for `validate`, `prepare`, `parse`, the `nvidia_api`
-   backend, and the whole test suite.
+```bash
+python -m pip install .
+```
 
-3. **Verify without a GPU.** The self-test runs all five request modes and resume logic on the
-   fake backend and writes only temporary files:
-   ```bash
-   uv run python experiment-cli/experiment_cli.py self-test \
-     --config experiments/local_all_modes_smoke.yaml
-   ```
-   A `Self-test passed` line means the install is good.
+Install local vLLM inference separately:
 
-4. **Confirm the GPU** (only for local inference). This gates a real run:
-   ```bash
-   uv run python experiment-cli/experiment_cli.py gpu-preflight
-   ```
-   It checks `nvidia-smi` (host driver and `/dev/nvidia*`) and CUDA access from uv's PyTorch.
-   uv installs CUDA user-space libraries but not the kernel driver; if it fails, repair the
-   host driver and rerun before launching an experiment.
+```bash
+python -m pip install '.[gpu]'
+```
 
-5. **Run the smoke experiment** on the GPU:
-   ```bash
-   uv run python experiment-cli/experiment_cli.py run \
-     --config experiments/local_all_modes_smoke.yaml
-   ```
+The GPU extra uses `vllm>=0.25.1,<0.26`, including native Gemma 4 Unified and
+Qwen support. The repository carries no Transformers fork, model monkeypatch,
+or startup hook.
 
-Every command follows the same shape — `experiment_cli.py <command> --config <file>` — and the
-same overrides (`--set key=value`, `--run-id`, `--output`, `--backend`). The
-[experiment-cli guide](experiment-cli/README.md) covers configs, the batch/API paths, the
-five-dataset matrix, and the output contract.
+## Commands
 
-> uv caches wheels into a gitignored `.uv-cache/` inside the project (set by `[tool.uv]
-> cache-dir`), so no command needs a `UV_CACHE_DIR=` prefix.
+```bash
+llms-experiments validate CONFIG
+llms-experiments run CONFIG
+llms-experiments prepare CONFIG
+llms-experiments parse CONFIG --responses RESPONSES.jsonl
+llms-experiments doctor
+```
 
-## Project Structure
-- `experiment-cli/`: Configuration-driven CLI tool for running and validation of local LLM models.
-- `condor/`: HTCondor submit files (`.sub`) and worker scripts for an HTCondor GPU cluster.
-  Each `.sub` queues one `experiment_cli.py run-matrix` worker per model; `run_matrix_worker.sh` is the
-  per-slot entry point. Paths resolve from `RUN_ROOT`, so the files carry no site-specific details — see
-  [`condor/README.md`](condor/README.md). Submit with `condor_submit condor/<file>.sub`.
-- `slurm/`: Slurm cluster batch-inference path — `submit-vllm.sh` (job submission) with its companion
-  `batch_infer_simple.py`, `sample_csv_deterministic.py`, and one-label prompt templates under `slurm/prompts/`.
-  Submit with `sbatch slurm/submit-vllm.sh`. The two schedulers are kept in separate folders so each
-  cluster's jobs can be submitted without cross-contamination.
-- `scripts/legacy/`: Older standalone single-sentence prototypes (`annotate.py`, `run_vllm.py`), kept for reference.
-- `models/`: Model list configurations.
-- `prompts_legacy/`: Archived demo prompt examples used by the legacy prototypes.
-- `docs/`: Auxiliary documentation including codebase architecture and classification strategies.
+`run` automatically handles one input or a configured dataset matrix. Use
+repeatable dotted overrides such as `--set batch.size=16`, plus `--datasets`
+and `--variants` to select matrix lanes. `prepare` writes batch request files
+and prints their matching `vllm run-batch` launch commands.
 
+The legacy `experiment-cli/experiment_cli.py` path forwards to these commands
+with a deprecation warning in v0.2. It maps `run-matrix` and `prepare-matrix`
+and will be removed in v0.3.
 
-## Development and Verification
+## Configuration
 
-- **Linting**: Run Ruff check to enforce code style:
-  ```bash
-  uv run ruff check .
-  ```
+Each run is one YAML file. Inputs, models, Markdown prompt fragments, structured
+output schemas, CPU limits, retries, batching, and output paths remain data,
+not Python code. Validate the included CPU-only matrix fixture with:
 
-- **Formatting**: Run Ruff format check:
-  ```bash
-  uv run ruff format --check .
-  ```
+```bash
+llms-experiments validate experiments/matrix_smoke.yaml
+llms-experiments run experiments/matrix_smoke.yaml --backend fake --rows 4
+```
 
-- **Testing**: Run pytest:
-  ```bash
-  uv run pytest
-  ```
+The typed configuration models are in `llms_experiments.config`; the generated
+[JSON Schema](docs/config.schema.json) supports editors and external tooling.
+See [configuration.md](docs/configuration.md) for the complete contract.
 
-  The suite runs entirely on the `fake` backend, so it needs no GPU. It includes
-  golden snapshots (`tests/golden/`) that pin the runner's observable output —
-  result rows and manifests — for the smoke config and for all five dataset
-  lanes of the matrix config. If a change to the runner is *meant* to alter that
-  output, review the diff and re-record it:
+## Efficiency and durability
 
-  ```bash
-  uv run pytest --golden-update
-  ```
+One model engine is reused for an entire run. Static prompt prefixes and schema
+assets are cached, prefix caching is enabled by default, and batch size is tuned
+per variant with smaller deferred retries. Streaming readers bound host memory.
+CPU affinity and native thread pools are YAML-controlled.
 
-  On a machine that sources ROS (`/opt/ros/*/setup.bash`), `PYTHONPATH` leaks
-  ROS's Python 3.12 site-packages into this 3.13 environment and pytest fails
-  while auto-loading ROS's plugins. Clear it for the command:
+Rows are buffered into append-only Parquet parts. A part is atomically renamed
+into place before its keys are committed to SQLite resume state, so interrupted
+buffers never become resumable. Failed rows remain explicit and backend outages
+are retried on resume without duplicating result identities.
 
-  ```bash
-  PYTHONPATH= uv run pytest
-  ```
+See [architecture.md](docs/architecture.md) and the independent
+[result contract](docs/result-contract.md).
+
+## Development
+
+```bash
+uv sync
+uv run ruff check .
+uv run ruff format --check .
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q
+python -m build
+bash -n condor/run.sh
+bash -n slurm/submit-vllm.sh
+```
+
+The test suite is CPU-only and uses the fake backend. GPU throughput and model
+acceptance remain separate release gates; do not claim maximised throughput
+until the documented warm-run comparison passes on a working GPU host.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the
+[MIT License](LICENSE).

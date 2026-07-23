@@ -10,7 +10,7 @@ The framework supports two core request modes (`request_mode`):
 1. **`generate`**: Generates a structured JSON response under JSON Schema constraints.
 2. **`candidate_logprobs`**: Captures raw probability scores (logits) of a single target token to determine classes.
 
-Using these two modes, the framework implements five distinct strategies:
+Using these two modes, the supplied configurations implement six inference contracts:
 
 ```mermaid
 graph TD
@@ -23,6 +23,7 @@ graph TD
 
     C --> C1["single_label_code_logits<br/>(First-token multi-class code)"]
     C --> C2["independent_yes_no_logits<br/>(First-token binary yes/no)"]
+    C --> C3["soft_multi_label_yes_no_logits<br/>(One yes/no probe per label)"]
 ```
 
 ---
@@ -78,6 +79,14 @@ graph TD
   }
   ```
 
+### Strategy 6: `soft_multi_label_yes_no_logits` (Per-label binary logits)
+
+* **How it works**: The runner expands each source item over the configured
+  label set and issues one independent yes/no request per label.
+* **Output structure**: Each Parquet row retains the source item ID,
+  `target_label`, and the raw yes/no candidate log-probabilities. Thresholding
+  and metric computation are left to an independent evaluator.
+
 ---
 
 ## 3. Efficiency Evaluation
@@ -123,13 +132,13 @@ The implementation in `experiment_cli.py` contains several excellent production-
 
 ---
 
-## 4. Improvements Applied
+## 4. Implementation details
 
-Both recommended improvements have been successfully implemented:
+### Tokenizer whitespace aggregation
 
-### 1. Tokenizer Whitespace Logprob Aggregation (Fixed)
-* **Problem**: Tokenizers represent `" A"` (with a leading space) and `"A"` (without a space) as different token IDs. The old code only kept the last token parsed, overwriting others.
-* **Fix**: Implemented mathematically correct probability aggregation:
+Tokenizers may represent `" A"` and `"A"` with different token IDs. Candidate
+aggregation treats their stripped forms as equivalent and combines their
+probability mass:
   ```python
   def aggregate_candidate_logprobs(raw_logprobs: list[tuple[str, float]], candidates: list[Any]) -> dict[str, float]:
       import math
@@ -147,9 +156,8 @@ Both recommended improvements have been successfully implemented:
               aggregated[stripped] = max_lp + math.log(sum_exp)
       return {candidate: aggregated.get(str(candidate).strip(), -float("inf")) for candidate in candidates}
   ```
-* **Benefit**: Ensures precise and mathematically correct logprob values when tokenizers split candidate outputs across multiple token variants.
+### API-compatible candidate limits
 
-### 2. API Portability Capping (Fixed)
-* **Problem**: Some external APIs (such as OpenAI) error out if `top_logprobs` is requested with a value greater than `20`.
-* **Fix**: Replaced `max(20, ...)` with `min(20, len(candidates) + 5)` for API request generation.
-* **Benefit**: Restores 100% portability to run the CLI against official OpenAI batch and chat endpoints without hitting API schema validation errors.
+The requested `top_logprobs` count is `min(20, len(candidates) + 5)`. The cap
+matches the common OpenAI-compatible API limit while leaving headroom for
+tokeniser variants.
