@@ -1,0 +1,22 @@
+name: build release artifacts
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llms-experiments-${{ github.ref_name }}
+          path: dist/*

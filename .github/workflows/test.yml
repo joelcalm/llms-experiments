@@ -1,0 +1,37 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-test-build-smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+      - run: uv build
+      - run: uv venv .wheel-venv --python ${{ matrix.python-version }}
+      - run: uv pip install --python .wheel-venv/bin/python dist/*.whl
+      - run: >-
+          .wheel-venv/bin/python -c
+          "import importlib.util, llms_experiments;
+          from llms_experiments.cli import main;
+          assert llms_experiments.__version__ == '0.2.0';
+          assert importlib.util.find_spec('protoethos') is None;
+          assert main(['doctor']) == 0"
+      - run: bash -n condor/run.sh
+      - run: bash -n slurm/submit-vllm.sh

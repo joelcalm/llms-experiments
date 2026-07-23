@@ -1,0 +1,21 @@
+name: Bug report
+description: Report a reproducible inference-runner defect
+title: "[Bug]: "
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Version and backend
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Minimal configuration
+      description: Remove credentials, private paths, and sensitive data.
+    validations:
+      required: true
