@@ -1,0 +1,50 @@
+run:
+  id: soft_multi_label_smoke
+  seed: 123
+  dataset_labels: [alpha, beta]
+  prompt_parts:
+    theory: experiment-cli/prompt/theory-generic.md
+    definitions: experiment-cli/prompt/definitions-generic.md
+input:
+  path: experiment-cli/data/smoke.parquet
+  format: parquet
+  id_column: id
+  text_column: text
+model:
+  name: Qwen/Qwen3.5-0.8B
+  backend: local_vllm
+  gpu_memory_utilization: 0.92
+  max_model_len: 2048
+  max_num_seqs: 128
+  enable_prefix_caching: true
+  language_model_only: true
+  synchronize_cuda: false
+resources:
+  cpu:
+    cores: auto
+    reserve_cores: 2
+    affinity: true
+    thread_pool_size: 1
+variants:
+  - id: soft_multi_label_yes_no_logits
+    request_mode: candidate_logprobs
+    candidates: ["yes", "no"]
+    expand_over: dataset_labels
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md, experiment-cli/prompt/task-yes-no-target.md]
+batch:
+  mode: auto
+  candidates: [1, 2, 4, 8, 16, 32, 64, 128]
+  warmup_rows: 64
+  min_size: 1
+  on_failure: halve
+validation:
+  enabled: true
+output:
+  directory: results/soft_multi_label_smoke
+  format: parquet
+  include_text: false
+  include_raw_response: true
+logging:
+  level: INFO
+  file: results/soft_multi_label_smoke/logs/run.log
+  events: results/soft_multi_label_smoke/logs/events.jsonl

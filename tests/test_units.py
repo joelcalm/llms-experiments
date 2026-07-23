@@ -1,4 +1,4 @@
-"""Unit coverage for the pure logic the refactor moves around."""
+"""Unit coverage for the runner's pure functions and persistence helpers."""
 
 from __future__ import annotations
 
@@ -199,6 +199,23 @@ def test_merge_parts_concatenates_variant_parts(tmp_path: Path) -> None:
 
 def test_merge_parts_with_no_parts_returns_zero(tmp_path: Path) -> None:
     assert cli.merge_parts(tmp_path) == 0
+
+
+# --- per-label request expansion -----------------------------------------------------
+
+
+def test_soft_multi_label_expansion_produces_unique_stable_positions() -> None:
+    rows = [{"id": "a", "text": "t", "_source_position": 0}, {"id": "b", "text": "t", "_source_position": 1}]
+    expanded = list(cli.expanded_rows(iter(rows), ["care", "harm"]))
+    assert [
+        (r["input_row_id"] if "input_row_id" in r else r["id"], r["_target_label"], r["_source_position"])
+        for r in expanded
+    ] == [
+        ("a", "care", 0),
+        ("a", "harm", 1),
+        ("b", "care", 2),
+        ("b", "harm", 3),
+    ]
 
 
 # --- helpers ------------------------------------------------------------------------
