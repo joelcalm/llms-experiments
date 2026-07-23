@@ -880,9 +880,34 @@ def configure_torch_cpu_threads(resource_guard: dict[str, Any] | None) -> None:
         pass
 
 
+def _gpu_compute_capability() -> tuple[int, int] | None:
+    """Return the active CUDA device capability without making CUDA mandatory."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability(0)
+            return int(major), int(minor)
+    except (ImportError, RuntimeError):
+        pass
+    return None
+
+
 def configure_vllm_environment(model: dict[str, Any]) -> dict[str, str]:
-    """Apply explicit, portable vLLM runtime switches before importing vLLM."""
+    """Apply explicit and capability-safe vLLM runtime switches before importing vLLM."""
     configured = {str(key): str(value) for key, value in model.get("vllm_environment", {}).items()}
+    capability = _gpu_compute_capability()
+    # FlashInfer 0.6.x can misidentify SM 12.x devices during its sampler JIT,
+    # even when the installed CUDA runtime supports the GPU.  vLLM has a
+    # torch-based sampler fallback; use it only for that affected capability
+    # range, and never override an explicit environment/configuration choice.
+    if (
+        capability is not None
+        and capability[0] >= 12
+        and "VLLM_USE_FLASHINFER_SAMPLER" not in configured
+        and "VLLM_USE_FLASHINFER_SAMPLER" not in os.environ
+    ):
+        configured["VLLM_USE_FLASHINFER_SAMPLER"] = "0"
     os.environ.update(configured)
     return configured
 

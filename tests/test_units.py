@@ -152,6 +152,25 @@ def test_validate_config_rejects_unknown_backend(tmp_path: Path) -> None:
         cli.load_config(config, check_files=False)
 
 
+def test_vllm_environment_disables_only_the_incompatible_sm12_flashinfer_sampler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("VLLM_USE_FLASHINFER_SAMPLER", raising=False)
+    monkeypatch.setitem(cli.configure_vllm_environment.__globals__, "_gpu_compute_capability", lambda: (12, 0))
+
+    configured = cli.configure_vllm_environment({})
+
+    assert configured["VLLM_USE_FLASHINFER_SAMPLER"] == "0"
+
+
+def test_vllm_environment_respects_an_explicit_flashinfer_sampler_choice(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(cli.configure_vllm_environment.__globals__, "_gpu_compute_capability", lambda: (12, 0))
+
+    configured = cli.configure_vllm_environment({"vllm_environment": {"VLLM_USE_FLASHINFER_SAMPLER": 1}})
+
+    assert configured["VLLM_USE_FLASHINFER_SAMPLER"] == "1"
+
+
 # --- resume index -------------------------------------------------------------------
 
 

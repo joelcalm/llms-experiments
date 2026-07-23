@@ -19,6 +19,11 @@ no vendor is assumed. Local vLLM options include model length, maximum
 sequences, memory utilisation, tensor parallelism, prefix caching, and
 language-model-only mode.
 
+On SM 12.x devices, the runner automatically selects vLLM's non-FlashInfer
+sampler fallback when no explicit `VLLM_USE_FLASHINFER_SAMPLER` setting is
+provided. This avoids a current FlashInfer sampler JIT incompatibility while
+leaving the normal GPU attention backend and an explicit user setting intact.
+
 Every variant requires `id`, `request_mode`, `result_type`, and one or more
 Markdown prompt paths. Request mode is `generate` or `candidate_logprobs`.
 Semantic result types are documented in the result contract and are independent
