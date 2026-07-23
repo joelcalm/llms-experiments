@@ -1,0 +1,10 @@
+universe = vanilla
+executable = condor/run.sh
+request_cpus = 16
+request_memory = 96GB
+request_gpus = 1
+environment = "CONFIG=$(CONFIG) OUTPUT_DIR=$(OUTPUT_DIR)"
+output = logs/llms-experiments.$(ClusterId).$(ProcId).out
+error = logs/llms-experiments.$(ClusterId).$(ProcId).err
+log = logs/llms-experiments.$(ClusterId).log
+queue 1
