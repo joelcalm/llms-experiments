@@ -107,6 +107,66 @@ def test_candidate_logprobs_mode_does_not_send_response_format(backend) -> None:
     assert payload["max_tokens"] == 1
 
 
+def test_generate_with_logprobs_keeps_schema_and_digit_positions(backend) -> None:
+    api, session = backend()
+    schema = {
+        "type": "object",
+        "properties": {
+            "label": {"type": "string", "enum": ["care"]},
+            "confidence_tens": {"type": "integer", "minimum": 0, "maximum": 9},
+            "confidence_units": {"type": "integer", "minimum": 0, "maximum": 9},
+        },
+        "required": ["label", "confidence_tens", "confidence_units"],
+        "additionalProperties": False,
+    }
+    variant = {
+        "id": "verbalized_confidence",
+        "request_mode": "generate_with_logprobs",
+        "top_logprobs": 20,
+        "_schema": schema,
+    }
+    payload = {"label": "care", "confidence_tens": 9, "confidence_units": 5}
+    session.json = lambda: {
+        "choices": [
+            {
+                "message": {"content": json.dumps(payload)},
+                "logprobs": {
+                    "content": [
+                        {
+                            "token": "9",
+                            "logprob": -0.1,
+                            "top_logprobs": [
+                                {"token": "9", "logprob": -0.1},
+                                {"token": "8", "logprob": -2.4},
+                            ],
+                        },
+                        {
+                            "token": "5",
+                            "logprob": -0.2,
+                            "top_logprobs": [
+                                {"token": "5", "logprob": -0.2},
+                                {"token": "4", "logprob": -1.9},
+                            ],
+                        },
+                    ]
+                },
+            }
+        ],
+        "usage": {"completion_tokens": 12},
+    }
+
+    response = api.generate(["prompt"], variant)[0]
+    parsed, errors = cli.interpret_response(response, schema, variant["request_mode"])
+
+    sent = session.payloads[0]
+    assert sent["logprobs"] is True
+    assert sent["top_logprobs"] == 20
+    assert sent["response_format"]["json_schema"]["schema"] == schema
+    assert errors == []
+    assert parsed["verbalized_confidence"] == pytest.approx(0.95)
+    assert parsed["logprob_weighted_confidence"] < parsed["verbalized_confidence"]
+
+
 def test_structured_outputs_can_be_disabled_for_endpoints_that_reject_it(backend) -> None:
     api, session = backend(api_structured_outputs=False)
     variant = {"id": "v", "request_mode": "generate", "_schema": SCHEMA}

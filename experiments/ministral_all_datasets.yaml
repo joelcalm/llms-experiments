@@ -234,6 +234,15 @@ variants:
     candidates: ["yes", "no"]
     expand_over: dataset_labels
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md, experiment-cli/prompt/task-yes-no-target.md]
+  # One generation yields both the literal two-digit score and its smoother
+  # expectation under the per-position digit logprobs.
+  - id: verbalized_confidence
+    result_type: single_label_verbalized_confidence
+    request_mode: generate_with_logprobs
+    max_tokens: 64
+    top_logprobs: 20
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-verbalized-confidence.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+    validation: {schema: experiment-cli/prompt/schema-verbalized-confidence.json, enum_from: dataset_labels}
 
 batch:
   mode: auto

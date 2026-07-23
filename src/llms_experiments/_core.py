@@ -31,7 +31,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
 
-MODES = {"generate", "candidate_logprobs"}
+MODES = {"generate", "generate_with_logprobs", "candidate_logprobs"}
 CONTRACT_VERSION = "2.0"
 TOOL_VERSION = "0.2.0"
 RESULT_SCHEMA = pa.schema(
@@ -100,6 +100,41 @@ def extract_top_logprobs(logprob_content: Any) -> list[tuple[str, float]]:
     return observed
 
 
+def extract_position_logprobs(logprob_content: Any) -> list[dict[str, Any]]:
+    """Preserve generated-token logprobs by position.
+
+    OpenAI-compatible responses expose one item per generated token.  Keeping
+    those positions separate is essential for verbalized confidence: the tens
+    and units digits have different probability distributions and therefore
+    cannot be flattened into one candidate map.
+    """
+    positions: list[dict[str, Any]] = []
+    for item in logprob_content or []:
+        sampled_token = item.get("token", "") if isinstance(item, dict) else getattr(item, "token", "")
+        sampled_logprob = (
+            item.get("logprob", -float("inf")) if isinstance(item, dict) else getattr(item, "logprob", -float("inf"))
+        )
+        top = item.get("top_logprobs") if isinstance(item, dict) else getattr(item, "top_logprobs", None)
+        observed: list[tuple[str, float]] = []
+        for candidate in top or []:
+            if isinstance(candidate, dict):
+                token, logprob = candidate.get("token", ""), candidate.get("logprob", -float("inf"))
+            else:
+                token = getattr(candidate, "token", "")
+                logprob = getattr(candidate, "logprob", -float("inf"))
+            observed.append((str(token), float(logprob)))
+        sampled = (str(sampled_token), float(sampled_logprob))
+        if sampled[0] and sampled not in observed:
+            observed.append(sampled)
+        positions.append({"token": sampled[0], "logprob": sampled[1], "top_logprobs": observed})
+    return positions
+
+
+def flatten_position_logprobs(positions: list[dict[str, Any]]) -> list[tuple[str, float]]:
+    """Flatten positional logprobs for first-token candidate scoring."""
+    return [candidate for position in positions for candidate in position.get("top_logprobs", [])]
+
+
 def aggregate_candidate_logprobs(raw_logprobs: list[tuple[str, float]], candidates: list[Any]) -> dict[str, float]:
     """Aggregate token logprobs by stripping whitespace and summing probabilities.
 
@@ -121,6 +156,83 @@ def aggregate_candidate_logprobs(raw_logprobs: list[tuple[str, float]], candidat
             aggregated[stripped] = max_lp + math.log(sum_exp)
 
     return {candidate: aggregated.get(str(candidate).strip(), -float("inf")) for candidate in candidates}
+
+
+_DIGIT_TOKEN = re.compile(r'^[\s":,\[\]{}]*([0-9])[\s":,\[\]{}]*$')
+
+
+def _digit_from_token(token: str) -> int | None:
+    """Decode one digit token, tolerating tokenizer-owned JSON punctuation."""
+    match = _DIGIT_TOKEN.fullmatch(token)
+    return int(match.group(1)) if match else None
+
+
+def digit_logprobs(position: dict[str, Any]) -> dict[str, float]:
+    """Aggregate all tokeniser spellings of digits 0--9 at one position."""
+    grouped: dict[str, list[float]] = {}
+    for token, logprob in position.get("top_logprobs", []):
+        digit = _digit_from_token(str(token))
+        if digit is not None:
+            grouped.setdefault(str(digit), []).append(float(logprob))
+    aggregated: dict[str, float] = {}
+    for digit, values in grouped.items():
+        maximum = max(values)
+        aggregated[digit] = maximum + math.log(sum(math.exp(value - maximum) for value in values))
+    return aggregated
+
+
+def verbalized_confidence(parsed: Any, token_logprobs: list[dict[str, Any]] | None) -> tuple[Any | None, list[str]]:
+    """Add literal and logprob-weighted confidence to a validated response.
+
+    The model emits two separate integer fields so the tens and units values
+    are guaranteed to occur at distinct generation positions even when a
+    tokenizer has a dedicated token for a whole number such as ``95``.
+    """
+    if not isinstance(parsed, dict):
+        return parsed, ["confidence_parse_error: expected a JSON object"]
+    try:
+        tens = int(parsed["confidence_tens"])
+        units = int(parsed["confidence_units"])
+    except (KeyError, TypeError, ValueError):
+        return parsed, ["confidence_parse_error: confidence_tens and confidence_units must be digits"]
+    if not 0 <= tens <= 9 or not 0 <= units <= 9:
+        return parsed, ["confidence_parse_error: confidence digits must be in [0, 9]"]
+
+    positions = token_logprobs or []
+    matched: list[dict[str, Any]] = []
+    cursor = len(positions) - 1
+    for expected in (units, tens):
+        while cursor >= 0 and _digit_from_token(str(positions[cursor].get("token", ""))) != expected:
+            cursor -= 1
+        if cursor < 0:
+            return parsed, [
+                "confidence_logprobs_missing: could not align generated confidence digits with token logprobs"
+            ]
+        matched.append(positions[cursor])
+        cursor -= 1
+    units_position, tens_position = matched
+    distributions = {
+        "tens": digit_logprobs(tens_position),
+        "units": digit_logprobs(units_position),
+    }
+    if not distributions["tens"] or not distributions["units"]:
+        return parsed, ["confidence_logprobs_missing: no digit alternatives were returned"]
+
+    probabilities = {
+        place: {digit: math.exp(logprob) for digit, logprob in values.items()}
+        for place, values in distributions.items()
+    }
+    masses = {place: sum(values.values()) for place, values in probabilities.items()}
+    expected_tens = sum(int(digit) * probability for digit, probability in probabilities["tens"].items())
+    expected_units = sum(int(digit) * probability for digit, probability in probabilities["units"].items())
+    enriched = {
+        **parsed,
+        "verbalized_confidence": (10 * tens + units) / 100,
+        "logprob_weighted_confidence": (10 * expected_tens + expected_units) / 100,
+        "confidence_digit_logprobs": distributions,
+        "confidence_digit_probability_mass": masses,
+    }
+    return enriched, []
 
 
 def resolve(config: dict[str, Any], value: str | Path) -> Path:
@@ -241,6 +353,12 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
             and not variant.get("candidates_from")
         ):
             raise ValueError(f"{identifier}: candidate_logprobs requires candidates")
+        if variant["request_mode"] == "generate_with_logprobs":
+            requested = int(variant.get("top_logprobs", 20))
+            if not 10 <= requested <= 20:
+                raise ValueError(f"{identifier}: generate_with_logprobs top_logprobs must be between 10 and 20")
+            if not variant.get("validation", {}).get("schema"):
+                raise ValueError(f"{identifier}: generate_with_logprobs requires a validation schema")
         if variant.get("expand_over") not in (None, "dataset_labels"):
             raise ValueError(f"{identifier}: expand_over must be 'dataset_labels'")
     sizes = config.get("batch", {}).get("candidates", [1])
@@ -932,6 +1050,7 @@ class Response:
     token_count: int
     candidate_logprobs: dict[str, float] | None = None
     backend_error: str | None = None
+    token_logprobs: list[dict[str, Any]] | None = None
 
 
 class Backend(Protocol):
@@ -948,6 +1067,24 @@ class FakeBackend:
         if variant["request_mode"] == "candidate_logprobs":
             scores = {candidate: -float(index) for index, candidate in enumerate(variant["candidates"])}
             return [Response(json.dumps({"candidates": scores}), 1, scores) for _ in prompts]
+        if variant["request_mode"] == "generate_with_logprobs":
+            payload = variant.get(
+                "fake_response",
+                {"label": "alpha", "confidence_tens": 7, "confidence_units": 5},
+            )
+            positions = [
+                {
+                    "token": str(payload["confidence_tens"]),
+                    "logprob": 0.0,
+                    "top_logprobs": [(str(payload["confidence_tens"]), 0.0)],
+                },
+                {
+                    "token": str(payload["confidence_units"]),
+                    "logprob": 0.0,
+                    "top_logprobs": [(str(payload["confidence_units"]), 0.0)],
+                },
+            ]
+            return [Response(json.dumps(payload), 2, token_logprobs=positions) for _ in prompts]
         return [Response(json.dumps(variant.get("fake_response", {"label": "alpha"})), 1) for _ in prompts]
 
     def close(self) -> None:
@@ -995,6 +1132,8 @@ class OpenAICompatibleBackend:
             )
         else:
             payload["max_tokens"] = int(variant.get("max_tokens", 128))
+            if variant["request_mode"] == "generate_with_logprobs":
+                payload.update({"logprobs": True, "top_logprobs": int(variant.get("top_logprobs", 20))})
             # Constrain generation server-side, as the vLLM and run-batch paths
             # already do. Without this the API path is the only one relying on
             # the prompt alone to produce schema-valid JSON.
@@ -1017,11 +1156,16 @@ class OpenAICompatibleBackend:
                     choice = (data.get("choices") or [{}])[0]
                     raw = str((choice.get("message") or {}).get("content") or "")
                     token_count = int((data.get("usage") or {}).get("completion_tokens") or 0)
+                    positions = extract_position_logprobs((choice.get("logprobs") or {}).get("content"))
                     if variant["request_mode"] == "candidate_logprobs":
-                        observed = extract_top_logprobs((choice.get("logprobs") or {}).get("content"))
+                        observed = flatten_position_logprobs(positions)
                         scores = aggregate_candidate_logprobs(observed, variant["candidates"])
                         return Response(json.dumps({"candidates": scores}), token_count, scores)
-                    return Response(raw, token_count)
+                    return Response(
+                        raw,
+                        token_count,
+                        token_logprobs=positions if variant["request_mode"] == "generate_with_logprobs" else None,
+                    )
                 error = f"http_{response.status_code}: {response.text[:500]}"
             except Exception as exc:
                 error = f"http_exception: {exc}"
@@ -1118,6 +1262,8 @@ class VLLMBackend:
             params = self.params(temperature=0, max_tokens=1, logprobs=top_logprobs_count(variant["candidates"]))
         else:
             kwargs: dict[str, Any] = {"temperature": 0, "max_tokens": variant.get("max_tokens", 128)}
+            if variant["request_mode"] == "generate_with_logprobs":
+                kwargs["logprobs"] = int(variant.get("top_logprobs", 20))
             if schema := variant.get("_schema"):
                 from vllm.sampling_params import StructuredOutputsParams
 
@@ -1148,7 +1294,27 @@ class VLLMBackend:
                 scores = aggregate_candidate_logprobs(raw_observed, variant["candidates"])
                 result.append(Response(json.dumps({"candidates": scores}), len(generated.token_ids), scores))
             else:
-                result.append(Response(generated.text, len(generated.token_ids)))
+                positions = None
+                if variant["request_mode"] == "generate_with_logprobs":
+                    positions = []
+                    for index, candidates in enumerate(generated.logprobs or []):
+                        sampled_id = generated.token_ids[index]
+                        sampled = candidates.get(sampled_id)
+                        top = [
+                            (
+                                str(getattr(logprob, "decoded_token", token_id)),
+                                float(getattr(logprob, "logprob", logprob)),
+                            )
+                            for token_id, logprob in candidates.items()
+                        ]
+                        positions.append(
+                            {
+                                "token": str(getattr(sampled, "decoded_token", sampled_id)),
+                                "logprob": float(getattr(sampled, "logprob", sampled)),
+                                "top_logprobs": top,
+                            }
+                        )
+                result.append(Response(generated.text, len(generated.token_ids), token_logprobs=positions))
         return result
 
     def close(self) -> None:
@@ -1513,7 +1679,10 @@ def interpret_response(
         return None, [f"{BACKEND_ERROR_PREFIX} {response.backend_error}"]
     if request_mode == "candidate_logprobs":
         return {"candidates": response.candidate_logprobs or {}}, []
-    return validate_response(response.raw, schema)
+    parsed, errors = validate_response(response.raw, schema)
+    if not errors and request_mode == "generate_with_logprobs":
+        return verbalized_confidence(parsed, response.token_logprobs)
+    return parsed, errors
 
 
 def result_row(
@@ -1586,6 +1755,7 @@ def semantic_result_type(variant: dict[str, Any]) -> str:
         "single_label_code_logits": "categorical_logprobs",
         "independent_yes_no_logits": "fixed_binary_probe",
         "soft_multi_label_yes_no_logits": "label_yes_no_logprobs",
+        "verbalized_confidence": "single_label_verbalized_confidence",
     }
     try:
         return aliases[str(variant["id"])]
@@ -2405,6 +2575,8 @@ def request_for_row(
         )
     else:
         body["max_completion_tokens"] = variant.get("max_tokens", 128)
+        if variant["request_mode"] == "generate_with_logprobs":
+            body.update({"logprobs": True, "top_logprobs": int(variant.get("top_logprobs", 20))})
         if schema:
             body["response_format"] = {
                 "type": "json_schema",
@@ -2428,7 +2600,7 @@ def build_requests(config: dict[str, Any], rows: list[dict[str, Any]]) -> list[d
     return requests
 
 
-def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, list[tuple[str, float]] | None]:
+def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, list[dict[str, Any]] | None]:
     response = item.get("response") or {}
     if item.get("error") or response.get("status_code", 200) != 200:
         return None, str(item.get("error") or response.get("status_code", "batch_response_error")), None
@@ -2436,8 +2608,8 @@ def _batch_text(item: dict[str, Any]) -> tuple[str | None, str | None, list[tupl
     content = (choice.get("message") or {}).get("content")
     if content is None:
         return None, "missing_chat_completion_content", None
-    raw_observed = extract_top_logprobs((choice.get("logprobs") or {}).get("content"))
-    return str(content), None, raw_observed or None
+    positions = extract_position_logprobs((choice.get("logprobs") or {}).get("content"))
+    return str(content), None, positions or None
 
 
 def _response_key(custom_id: str) -> tuple[tuple[str, str, int], int] | None:
@@ -2534,6 +2706,8 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                     "top_logprobs": top_logprobs_count(variant.get("candidates", [])),
                 }
             )
+        elif variant["request_mode"] == "generate_with_logprobs":
+            body.update({"logprobs": True, "top_logprobs": int(variant.get("top_logprobs", 20))})
         elif schema:
             body["response_format"] = {
                 "type": "json_schema",
@@ -2571,14 +2745,15 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                 raw, batch_error, observed = None, "missing_batch_response", None
             else:
                 raw, batch_error, observed = _batch_text(responses[custom_id])
+            response = Response(raw or "", 0, token_logprobs=observed)
             parsed, errors = (
-                validate_response(raw or "", schema)
+                interpret_response(response, schema, variant["request_mode"])
                 if raw is not None
                 else (None, [batch_error or "missing_batch_response"])
             )
             scores: dict[str, float] | None = None
             if variant["request_mode"] == "candidate_logprobs" and observed is not None:
-                scores = aggregate_candidate_logprobs(observed, variant["candidates"])
+                scores = aggregate_candidate_logprobs(flatten_position_logprobs(observed), variant["candidates"])
                 parsed, errors = {"candidates": scores}, []
             attempt_count = 1
 
@@ -2587,9 +2762,15 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                 retry_raw, retry_error, retry_observed = _batch_text(latest)
                 if retry_raw is not None:
                     raw = retry_raw
-                    parsed, errors = validate_response(raw, schema)
+                    parsed, errors = interpret_response(
+                        Response(raw, 0, token_logprobs=retry_observed),
+                        schema,
+                        variant["request_mode"],
+                    )
                     if variant["request_mode"] == "candidate_logprobs" and retry_observed is not None:
-                        scores = aggregate_candidate_logprobs(retry_observed, variant["candidates"])
+                        scores = aggregate_candidate_logprobs(
+                            flatten_position_logprobs(retry_observed), variant["candidates"]
+                        )
                         parsed, errors = {"candidates": scores}, []
                 else:
                     attempt_count = 1
@@ -2703,11 +2884,15 @@ def response_from_api(completion: Any, variant: dict[str, Any]) -> Response:
     raw = str(getattr(choice.message, "content", None) or "")
     usage = getattr(completion, "usage", None)
     token_count = int(getattr(usage, "completion_tokens", 0) or 0)
-    raw_observed = extract_top_logprobs(getattr(getattr(choice, "logprobs", None), "content", None))
+    positions = extract_position_logprobs(getattr(getattr(choice, "logprobs", None), "content", None))
     if variant["request_mode"] == "candidate_logprobs":
-        scores = aggregate_candidate_logprobs(raw_observed, variant["candidates"])
+        scores = aggregate_candidate_logprobs(flatten_position_logprobs(positions), variant["candidates"])
         return Response(json.dumps({"candidates": scores}), token_count, scores)
-    return Response(raw, token_count)
+    return Response(
+        raw,
+        token_count,
+        token_logprobs=positions if variant["request_mode"] == "generate_with_logprobs" else None,
+    )
 
 
 def benchmark_rows(config: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:

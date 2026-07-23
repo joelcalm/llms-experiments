@@ -39,7 +39,7 @@ class ModelConfig(ConfigSection):
 
 class VariantConfig(ConfigSection):
     id: str = Field(min_length=1)
-    request_mode: Literal["generate", "candidate_logprobs"]
+    request_mode: Literal["generate", "generate_with_logprobs", "candidate_logprobs"]
     prompts: list[str] = Field(min_length=1)
     result_type: str | None = None
 
