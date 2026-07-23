@@ -1,73 +1,208 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
-    "InputConfig": {
-      "additionalProperties": true,
-      "properties": {
-        "format": {"type": "string"},
-        "id_column": {"type": "string"},
-        "path": {"type": "string"},
-        "text_column": {"type": "string"}
-      },
-      "required": ["path", "format", "id_column", "text_column"],
-      "type": "object"
-    },
     "DatasetConfig": {
       "additionalProperties": true,
       "properties": {
-        "id": {"minLength": 1, "type": "string"},
-        "input": {"$ref": "#/$defs/InputConfig"}
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "input": {
+          "$ref": "#/$defs/InputConfig"
+        }
       },
-      "required": ["id", "input"],
+      "required": [
+        "id",
+        "input"
+      ],
+      "title": "DatasetConfig",
+      "type": "object"
+    },
+    "InputConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "format": {
+          "title": "Format",
+          "type": "string"
+        },
+        "id_column": {
+          "title": "Id Column",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "text_column": {
+          "title": "Text Column",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "format",
+        "id_column",
+        "text_column"
+      ],
+      "title": "InputConfig",
       "type": "object"
     },
     "ModelConfig": {
       "additionalProperties": true,
       "properties": {
-        "backend": {"enum": ["local_vllm", "openai_compatible", "fake"], "type": "string"},
-        "name": {"minLength": 1, "type": "string"}
+        "backend": {
+          "enum": [
+            "local_vllm",
+            "openai_compatible",
+            "fake"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
       },
-      "required": ["name", "backend"],
-      "type": "object"
-    },
-    "RunConfig": {
-      "additionalProperties": true,
-      "properties": {"id": {"minLength": 1, "type": "string"}},
-      "required": ["id"],
+      "required": [
+        "name",
+        "backend"
+      ],
+      "title": "ModelConfig",
       "type": "object"
     },
     "OutputConfig": {
       "additionalProperties": true,
-      "properties": {"directory": {"type": "string"}},
-      "required": ["directory"],
+      "properties": {
+        "directory": {
+          "title": "Directory",
+          "type": "string"
+        }
+      },
+      "required": [
+        "directory"
+      ],
+      "title": "OutputConfig",
+      "type": "object"
+    },
+    "RunConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "RunConfig",
       "type": "object"
     },
     "VariantConfig": {
       "additionalProperties": true,
       "properties": {
-        "id": {"minLength": 1, "type": "string"},
-        "prompts": {"items": {"type": "string"}, "minItems": 1, "type": "array"},
-        "request_mode": {"enum": ["generate", "candidate_logprobs"], "type": "string"},
-        "result_type": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null}
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "prompts": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Prompts",
+          "type": "array"
+        },
+        "request_mode": {
+          "enum": [
+            "generate",
+            "generate_with_logprobs",
+            "candidate_logprobs"
+          ],
+          "title": "Request Mode",
+          "type": "string"
+        },
+        "result_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Type"
+        }
       },
-      "required": ["id", "request_mode", "prompts"],
+      "required": [
+        "id",
+        "request_mode",
+        "prompts"
+      ],
+      "title": "VariantConfig",
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
   "description": "Top-level run contract for one input or a dataset matrix.",
   "properties": {
     "datasets": {
-      "anyOf": [{"items": {"$ref": "#/$defs/DatasetConfig"}, "type": "array"}, {"type": "null"}],
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/DatasetConfig"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Datasets"
+    },
+    "input": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InputConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
       "default": null
     },
-    "input": {"anyOf": [{"$ref": "#/$defs/InputConfig"}, {"type": "null"}], "default": null},
-    "model": {"$ref": "#/$defs/ModelConfig"},
-    "output": {"$ref": "#/$defs/OutputConfig"},
-    "run": {"$ref": "#/$defs/RunConfig"},
-    "variants": {"items": {"$ref": "#/$defs/VariantConfig"}, "minItems": 1, "type": "array"}
+    "model": {
+      "$ref": "#/$defs/ModelConfig"
+    },
+    "output": {
+      "$ref": "#/$defs/OutputConfig"
+    },
+    "run": {
+      "$ref": "#/$defs/RunConfig"
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/VariantConfig"
+      },
+      "minItems": 1,
+      "title": "Variants",
+      "type": "array"
+    }
   },
-  "required": ["run", "model", "variants", "output"],
+  "required": [
+    "run",
+    "model",
+    "variants",
+    "output"
+  ],
   "title": "ExperimentConfig",
   "type": "object"
 }

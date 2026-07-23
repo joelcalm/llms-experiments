@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Adds schema-constrained verbalized confidence as a single-pass strategy.
+Generated digit-token distributions produce both the sampled percentage and a
+continuous logprob-weighted expectation, with per-position probability-mass
+diagnostics retained in the result row.
+
 ## 0.2.0 — 2026-07-23
 
 First installable release. Adds the modular package and five-command console
