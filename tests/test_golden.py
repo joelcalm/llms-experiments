@@ -1,7 +1,7 @@
 """End-to-end golden snapshots captured with the fake backend.
 
-These lock the observable output of the runner so the refactor can be shown to
-change structure without changing behaviour.  They need no GPU.
+These lock the observable output of the runner across implementation changes.
+They need no GPU.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 from conftest import assert_golden, read_manifest, read_results, run_cli
 
 SMOKE = "experiments/local_all_modes_smoke.yaml"
-MATRIX = "experiments/ministral_all_datasets.yaml"
+MATRIX = "experiments/matrix_smoke.yaml"
 
 
 def test_run_smoke(tmp_path: Path, golden_update: bool) -> None:
@@ -36,7 +36,7 @@ def test_run_smoke_is_resumable(tmp_path: Path) -> None:
 
 
 def test_run_matrix(tmp_path: Path, golden_update: bool) -> None:
-    """Covers all five dataset lanes: nested_json, jsonl, paired_tsv and filtered csv."""
+    """Covers nested JSON, JSONL, paired TSV, and filtered CSV lanes."""
     out = tmp_path / "matrix"
     run_cli("run-matrix", "--config", MATRIX, "--backend", "fake", "--rows", "8", "--output", str(out))
     payload = {
@@ -85,7 +85,7 @@ def test_prepare_parse_roundtrip_honours_enum_from(tmp_path: Path, golden_update
     where they genuinely differ.
     """
     out = tmp_path / "batch"
-    dataset = "mftc"
+    dataset = "nested_json"
     # The lane's own input, not the top-level one: dataset_config() replaces
     # config["input"] wholesale, so `--set input.limit` never reaches a lane.
     limit = ("--set", "datasets.0.input.limit=8")

@@ -33,15 +33,21 @@ import pyarrow.parquet as pq
 import yaml
 
 MODES = {"generate", "candidate_logprobs"}
+CONTRACT_VERSION = "2.0"
+TOOL_VERSION = "0.2.0"
 RESULT_SCHEMA = pa.schema(
     [
+        ("contract_version", pa.string()),
+        ("tool_version", pa.string()),
         ("run_id", pa.string()),
+        ("model_id", pa.string()),
         ("dataset_id", pa.string()),
         ("variant_id", pa.string()),
+        ("result_type", pa.string()),
         ("input_row_id", pa.string()),
         ("source_position", pa.int64()),
         ("input_text", pa.string()),
-        ("gold_labels", pa.string()),
+        ("gold_labels", pa.list_(pa.string())),
         ("prompt_hash", pa.string()),
         ("config_hash", pa.string()),
         ("prompt_group_id", pa.string()),
@@ -49,14 +55,14 @@ RESULT_SCHEMA = pa.schema(
         ("raw_response", pa.string()),
         ("parsed_output", pa.string()),
         ("validation_status", pa.string()),
-        ("validation_errors", pa.string()),
+        ("validation_errors", pa.list_(pa.string())),
         ("final_status", pa.string()),
         ("batch_size", pa.int64()),
         ("latency_seconds", pa.float64()),
         ("rows_per_second", pa.float64()),
         ("token_count", pa.int64()),
         ("gpu_snapshot", pa.string()),
-        ("candidate_logprobs", pa.string()),
+        ("candidate_scores", pa.map_(pa.string(), pa.float64())),
         ("target_label", pa.string()),
     ]
 )
@@ -1168,10 +1174,10 @@ def tune(
 
 def write_results(run_dir: Path, rows: list[dict[str, Any]]) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(rows), run_dir / "results.parquet", compression="zstd")
+    pq.write_table(pa.Table.from_pylist(rows, schema=RESULT_SCHEMA), run_dir / "results.parquet", compression="zstd")
     for identifier in sorted({str(row["variant_id"]) for row in rows}):
         pq.write_table(
-            pa.Table.from_pylist([row for row in rows if row["variant_id"] == identifier]),
+            pa.Table.from_pylist([row for row in rows if row["variant_id"] == identifier], schema=RESULT_SCHEMA),
             run_dir / f"{identifier}.parquet",
             compression="zstd",
         )
@@ -1202,6 +1208,7 @@ def variant_config_hash(config: dict[str, Any], variant: dict[str, Any]) -> str:
     for name, path in config.get("run", {}).get("prompt_parts", {}).items():
         assets[f"part:{name}"] = read_asset(config, path)
     payload = {
+        "contract_version": CONTRACT_VERSION,
         "variant": variant,
         "model": config.get("model"),
         "input": config.get("input"),
@@ -1512,13 +1519,17 @@ def result_row(
     """
     source = config["input"]
     return {
+        "contract_version": CONTRACT_VERSION,
+        "tool_version": TOOL_VERSION,
         "run_id": run_id,
+        "model_id": str(config["model"]["name"]),
         "dataset_id": config["run"].get("dataset_id", "default"),
         "variant_id": variant_id,
+        "result_type": semantic_result_type(next(item for item in config["variants"] if item["id"] == variant_id)),
         "input_row_id": str(row[source["id_column"]]),
         "source_position": row["_source_position"],
         "input_text": str(row[source["text_column"]]) if config["output"].get("include_text") else None,
-        "gold_labels": serialise(row.get("_gold_labels")),
+        "gold_labels": list(row.get("_gold_labels") or []),
         "prompt_hash": hashlib.sha256(prompt_text.encode()).hexdigest(),
         "config_hash": config_hash,
         "prompt_group_id": group_id,
@@ -1526,16 +1537,35 @@ def result_row(
         "raw_response": raw if config["output"].get("include_raw_response", True) else None,
         "parsed_output": serialise(parsed),
         "validation_status": "valid" if not errors else "invalid",
-        "validation_errors": serialise(errors),
+        "validation_errors": list(errors),
         "final_status": final_status or ("completed" if not errors else failure_status(errors)),
         "batch_size": batch_size,
         "latency_seconds": latency_seconds,
         "rows_per_second": rows_per_second,
         "token_count": token_count,
         "gpu_snapshot": gpu_snapshot,
-        "candidate_logprobs": serialise(candidate_logprobs),
+        "candidate_scores": candidate_logprobs,
         "target_label": row.get("_target_label"),
     }
+
+
+def semantic_result_type(variant: dict[str, Any]) -> str:
+    """Return the required semantic output type, independent of prompt strategy names."""
+
+    if variant.get("result_type"):
+        return str(variant["result_type"])
+    aliases = {
+        "single_label_json": "single_label",
+        "multi_label_json": "multi_label",
+        "ordinal_score_json": "ordinal_score",
+        "single_label_code_logits": "categorical_logprobs",
+        "independent_yes_no_logits": "fixed_binary_probe",
+        "soft_multi_label_yes_no_logits": "label_yes_no_logprobs",
+    }
+    try:
+        return aliases[str(variant["id"])]
+    except KeyError as exc:
+        raise ValueError(f"variant {variant.get('id')!r} requires result_type") from exc
 
 
 def discard_stale_results(run_dir: Path, config: dict[str, Any]) -> None:
@@ -1924,11 +1954,15 @@ def run(config: dict[str, Any], backend: Backend | None = None, row_limit: int |
     effective = {key: value for key, value in config.items() if not key.startswith("_")}
     (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(effective, sort_keys=False), encoding="utf-8")
     manifest = {
+        "contract_version": CONTRACT_VERSION,
+        "tool_version": TOOL_VERSION,
         "run_id": run_id,
+        "model_id": str(config["model"]["name"]),
         "dataset_id": config["run"].get("dataset_id", "default"),
         "input_rows": total_input,
         "result_rows": merged or total_results,
         "model": config["model"],
+        "effective_config": effective,
         "variants": selected,
         "cpu_resource_guard": config.get("_resource_guard"),
         "gpu_preflight": gpu(),
@@ -2543,9 +2577,9 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
                             "raw_response": raw,
                             "parsed_output": serialise(parsed),
                             "validation_status": "valid" if not errors else "invalid",
-                            "validation_errors": serialise(errors),
+                            "validation_errors": list(errors),
                             "final_status": "completed" if not errors else "failed_validation",
-                            "candidate_logprobs": serialise(scores),
+                            "candidate_scores": scores,
                         }
                     )
                     add_retry_request(variant, schema, row, raw or "", errors, attempt_count + 1)
@@ -2578,11 +2612,15 @@ def parse_batch(config: dict[str, Any], response_path: str | Path) -> dict[str, 
             "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in retry_requests), encoding="utf-8"
         )
     manifest = {
+        "contract_version": CONTRACT_VERSION,
+        "tool_version": TOOL_VERSION,
         "run_id": run_id,
+        "model_id": str(config["model"]["name"]),
         "dataset_id": config["run"].get("dataset_id", "default"),
         "input_rows": len(rows),
         "result_rows": len(saved),
         "model": config["model"],
+        "effective_config": {key: value for key, value in config.items() if not key.startswith("_")},
         "variants": {variant["id"]: {"external_batch": True} for variant in config["variants"]},
         "batch_response_path": str(source),
         "source_provenance": source_provenance(config),

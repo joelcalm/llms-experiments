@@ -1,27 +1,205 @@
 {
   "manifest": {
-    "dataset_id": "mftc",
-    "input_rows": 8,
-    "model": {
-      "backend": "local_vllm",
-      "config_format": "mistral",
-      "enable_prefix_caching": true,
-      "gpu_memory_utilization": 0.9,
-      "language_model_only": true,
-      "load_format": "mistral",
-      "max_model_len": 2048,
-      "max_num_seqs": 64,
-      "name": "mistralai/Ministral-3-3B-Instruct-2512",
-      "synchronize_cuda": false,
-      "tokenizer_mode": "mistral",
-      "vllm_environment": {
-        "VLLM_DISABLED_KERNELS": "FlashInferFP8ScaledMMLinearKernel"
-      }
+    "contract_version": "2.0",
+    "dataset_id": "nested_json",
+    "effective_config": {
+      "batch": {
+        "candidates": [
+          1,
+          2,
+          4
+        ],
+        "min_size": 1,
+        "mode": "fixed",
+        "on_failure": "halve",
+        "size": 4,
+        "warmup_rows": 2
+      },
+      "input": {
+        "binary_question": "Does this text express care?",
+        "code_labels": {
+          "A": "care",
+          "B": "harm"
+        },
+        "format": "nested_json",
+        "id_column": "tweet_id",
+        "label_value_key": "annotation",
+        "labels": [
+          "care",
+          "harm"
+        ],
+        "labels_column": "annotations",
+        "limit": 8,
+        "path": "experiment-cli/data/matrix_nested.json",
+        "prompt_parts": {
+          "definitions": "experiment-cli/prompt/definitions-mft.md",
+          "theory": "experiment-cli/prompt/theory-mft.md"
+        },
+        "records_key": "Tweets",
+        "text_column": "tweet_text"
+      },
+      "logging": {
+        "events": "results/matrix_smoke/events.jsonl",
+        "file": "results/matrix_smoke/run.log",
+        "level": "INFO"
+      },
+      "model": {
+        "backend": "fake",
+        "max_model_len": 512,
+        "max_num_seqs": 8,
+        "name": "fake"
+      },
+      "output": {
+        "directory": "/tmp/pytest-of-alono/pytest-117/test_prepare_parse_roundtrip_h0/batch/dataset=nested_json"
+      },
+      "resources": {
+        "cpu": {
+          "affinity": false,
+          "cores": "auto",
+          "reserve_cores": 1,
+          "thread_pool_size": 1
+        }
+      },
+      "run": {
+        "binary_question": "Does this text express care?",
+        "code_labels": {
+          "A": "care",
+          "B": "harm"
+        },
+        "dataset_id": "nested_json",
+        "dataset_labels": [
+          "care",
+          "harm"
+        ],
+        "id": "matrix_smoke__nested_json",
+        "prompt_parts": {
+          "definitions": "experiment-cli/prompt/definitions-mft.md",
+          "theory": "experiment-cli/prompt/theory-mft.md"
+        },
+        "seed": 123
+      },
+      "streaming": {
+        "enabled": true,
+        "output_chunk_rows": 32
+      },
+      "validation": {
+        "enabled": true,
+        "retry": {
+          "batch_size_divisor": 2,
+          "correction_prompt": "experiment-cli/prompt/retry-structured-output.md",
+          "deferred": true,
+          "enabled": true,
+          "max_attempts": 1,
+          "max_tokens_cap": 96,
+          "max_tokens_multiplier": 2
+        }
+      },
+      "variants": [
+        {
+          "id": "single_label_json",
+          "max_tokens": 32,
+          "prompts": [
+            "experiment-cli/prompt/system.md",
+            "experiment-cli/prompt/context.md",
+            "experiment-cli/prompt/task-single-label.md",
+            "experiment-cli/prompt/output-json.md",
+            "experiment-cli/prompt/input.md"
+          ],
+          "request_mode": "generate",
+          "validation": {
+            "enum_from": "dataset_labels",
+            "schema": "experiment-cli/prompt/schema-single-label.json"
+          }
+        },
+        {
+          "id": "multi_label_json",
+          "max_tokens": 48,
+          "prompts": [
+            "experiment-cli/prompt/system.md",
+            "experiment-cli/prompt/context.md",
+            "experiment-cli/prompt/task-multi-label.md",
+            "experiment-cli/prompt/output-json.md",
+            "experiment-cli/prompt/input.md"
+          ],
+          "request_mode": "generate",
+          "validation": {
+            "enum_from": "dataset_labels",
+            "schema": "experiment-cli/prompt/schema-multi-label.json"
+          }
+        },
+        {
+          "id": "ordinal_score_json",
+          "max_tokens": 32,
+          "prompts": [
+            "experiment-cli/prompt/system.md",
+            "experiment-cli/prompt/context.md",
+            "experiment-cli/prompt/task-ordinal-score.md",
+            "experiment-cli/prompt/output-json.md",
+            "experiment-cli/prompt/input.md"
+          ],
+          "request_mode": "generate",
+          "validation": {
+            "schema": "experiment-cli/prompt/schema-ordinal-score.json"
+          }
+        },
+        {
+          "candidates_from": "code_labels",
+          "id": "single_label_code_logits",
+          "prompts": [
+            "experiment-cli/prompt/system.md",
+            "experiment-cli/prompt/context.md",
+            "experiment-cli/prompt/task-single-label-code.md",
+            "experiment-cli/prompt/candidate-answer.md",
+            "experiment-cli/prompt/input.md"
+          ],
+          "request_mode": "candidate_logprobs"
+        },
+        {
+          "candidates": [
+            "yes",
+            "no"
+          ],
+          "id": "independent_yes_no_logits",
+          "prompts": [
+            "experiment-cli/prompt/system.md",
+            "experiment-cli/prompt/context.md",
+            "experiment-cli/prompt/task-yes-no.md",
+            "experiment-cli/prompt/candidate-answer.md",
+            "experiment-cli/prompt/input.md"
+          ],
+          "request_mode": "candidate_logprobs"
+        },
+        {
+          "candidates": [
+            "yes",
+            "no"
+          ],
+          "expand_over": "dataset_labels",
+          "id": "soft_multi_label_yes_no_logits",
+          "prompts": [
+            "experiment-cli/prompt/system.md",
+            "experiment-cli/prompt/context.md",
+            "experiment-cli/prompt/candidate-answer.md",
+            "experiment-cli/prompt/input.md",
+            "experiment-cli/prompt/task-yes-no-target.md"
+          ],
+          "request_mode": "candidate_logprobs"
+        }
+      ]
     },
-    "result_rows": 40,
+    "input_rows": 2,
+    "model": {
+      "backend": "fake",
+      "max_model_len": 512,
+      "max_num_seqs": 8,
+      "name": "fake"
+    },
+    "model_id": "fake",
+    "result_rows": 14,
     "resume_skipped_rows": 0,
     "retry_requests": 0,
-    "run_id": "ministral_all_datasets__mftc",
+    "run_id": "matrix_smoke__nested_json",
+    "tool_version": "0.2.0",
     "variants": {
       "independent_yes_no_logits": {
         "external_batch": true
@@ -37,327 +215,118 @@
       },
       "single_label_json": {
         "external_batch": true
+      },
+      "soft_multi_label_yes_no_logits": {
+        "external_batch": true
       }
     }
   },
   "rows": [
     {
       "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
+      "candidate_scores": null,
+      "config_hash": "e4fee34acaa838d3290a62e84093d22febffaaeb2c5e6846235dec35308eac8d",
+      "contract_version": "2.0",
+      "dataset_id": "nested_json",
       "final_status": "completed",
-      "gold_labels": "[\"care\", \"purity\"]",
-      "input_row_id": "521033092132503552",
+      "gold_labels": [
+        "care"
+      ],
+      "input_row_id": "nested-1",
       "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "7b6f66bc5f82dbbd99eaeb3f0c47a59d5d23de6704a110751680aad9a9e8e891",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
+      "model_id": "fake",
+      "parsed_output": "{\"labels\": [\"care\"]}",
+      "prompt_group_id": "6c683bd7f30c2595",
+      "prompt_hash": "65e9e8870ce3a16e9d418b0a179fc6814b7d012f869fa4a2bd9b3122dc775b5b",
+      "raw_response": "{\"labels\": [\"care\"]}",
+      "result_type": "multi_label",
+      "run_id": "matrix_smoke__nested_json",
       "source_position": 0,
+      "target_label": null,
       "token_count": null,
-      "validation_errors": "[]",
+      "tool_version": "0.2.0",
+      "validation_errors": [],
       "validation_status": "valid",
       "variant_id": "multi_label_json"
     },
     {
       "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
+      "candidate_scores": null,
+      "config_hash": "e4fee34acaa838d3290a62e84093d22febffaaeb2c5e6846235dec35308eac8d",
+      "contract_version": "2.0",
+      "dataset_id": "nested_json",
       "final_status": "completed",
-      "gold_labels": "[\"loyalty\", \"subversion\"]",
-      "input_row_id": "537681598989475841",
+      "gold_labels": [
+        "harm"
+      ],
+      "input_row_id": "nested-2",
       "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "9d70bc76d7282c98c2ce152cb31611dae153258d419e61dc275895f122c2941b",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
+      "model_id": "fake",
+      "parsed_output": "{\"labels\": [\"care\"]}",
+      "prompt_group_id": "6c683bd7f30c2595",
+      "prompt_hash": "0039343516a2c8b9aee65c1d1fda8b29419a3df1080a602a47994f25b5e8f997",
+      "raw_response": "{\"labels\": [\"care\"]}",
+      "result_type": "multi_label",
+      "run_id": "matrix_smoke__nested_json",
       "source_position": 1,
+      "target_label": null,
       "token_count": null,
-      "validation_errors": "[]",
+      "tool_version": "0.2.0",
+      "validation_errors": [],
       "validation_status": "valid",
       "variant_id": "multi_label_json"
     },
     {
       "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
+      "candidate_scores": null,
+      "config_hash": "e35fc6cdc40e1a1915deab7dfbde1da6a2943ab66d8bbed102828b27805c36b9",
+      "contract_version": "2.0",
+      "dataset_id": "nested_json",
       "final_status": "completed",
-      "gold_labels": "[\"care\", \"cheating\", \"fairness\", \"harm\"]",
-      "input_row_id": "624644420705648640",
+      "gold_labels": [
+        "care"
+      ],
+      "input_row_id": "nested-1",
       "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "f8d9b31268c80b3dbe60919c6013dddc6cda203cc79fa2e5f9b65f0081bc4b5d",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 2,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "multi_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"purity\"]",
-      "input_row_id": "752979765984890884",
-      "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "fd2cbaa4294fa4be21bd15c2fc3d68da1d841c4ea78569207a9bf412f04b3cb9",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 3,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "multi_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"cheating\", \"fairness\", \"loyalty\", \"purity\"]",
-      "input_row_id": "548029362348765185",
-      "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "449ce6df5bc3bda50a47469dc8109d4e58d132805fc23aabb4a52db6db99d8d9",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 4,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "multi_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"purity\"]",
-      "input_row_id": "753261224737898497",
-      "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "42bf035d69f4a94c0c4082e971b4e9d240a2bc923ef9148dce1e3e35f6e4af6b",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 5,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "multi_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"cheating\", \"harm\", \"loyalty\"]",
-      "input_row_id": "751971806265810944",
-      "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "a83401387561381401ea89e8f94724bd4853d13edda66833d8f2b952cd3f6d5c",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 6,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "multi_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "add1f797e0c83b286c29753d4ca1f6caf0823cbe798d3ac5a4639d54bb4a63db",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"non-moral\"]",
-      "input_row_id": "676436368268984320",
-      "input_text": null,
-      "parsed_output": "{\"labels\": [\"authority\"]}",
-      "prompt_group_id": "97c13b08a98d2260",
-      "prompt_hash": "b8502a93ed57ce4f500860b3c17fb875e293dd2e1776bed943eed5c32e1a71b4",
-      "raw_response": "{\"labels\": [\"authority\"]}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 7,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "multi_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"purity\"]",
-      "input_row_id": "521033092132503552",
-      "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "f51754bcbd9ad82afc05c2fdf5e0beb631e6ab9bd63db781aeb8438fac8c8c3c",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
+      "model_id": "fake",
+      "parsed_output": "{\"label\": \"care\"}",
+      "prompt_group_id": "732196997c9b4ee5",
+      "prompt_hash": "0f6ae9061c1f2563a6e310f3dc31d250df0422d591c18449aaeec6a8f1ce98fc",
+      "raw_response": "{\"label\": \"care\"}",
+      "result_type": "single_label",
+      "run_id": "matrix_smoke__nested_json",
       "source_position": 0,
+      "target_label": null,
       "token_count": null,
-      "validation_errors": "[]",
+      "tool_version": "0.2.0",
+      "validation_errors": [],
       "validation_status": "valid",
       "variant_id": "single_label_json"
     },
     {
       "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
+      "candidate_scores": null,
+      "config_hash": "e35fc6cdc40e1a1915deab7dfbde1da6a2943ab66d8bbed102828b27805c36b9",
+      "contract_version": "2.0",
+      "dataset_id": "nested_json",
       "final_status": "completed",
-      "gold_labels": "[\"loyalty\", \"subversion\"]",
-      "input_row_id": "537681598989475841",
+      "gold_labels": [
+        "harm"
+      ],
+      "input_row_id": "nested-2",
       "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "a8d9f64e81b6f46adfb1d1f64631d59b71650bc4cf84fa2f98b96e2284e426a0",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
+      "model_id": "fake",
+      "parsed_output": "{\"label\": \"care\"}",
+      "prompt_group_id": "732196997c9b4ee5",
+      "prompt_hash": "7a2652215a21c9faa192b5e9484fedadc4c0702d9fe829a5484f6f5c246a3a21",
+      "raw_response": "{\"label\": \"care\"}",
+      "result_type": "single_label",
+      "run_id": "matrix_smoke__nested_json",
       "source_position": 1,
+      "target_label": null,
       "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "single_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"cheating\", \"fairness\", \"harm\"]",
-      "input_row_id": "624644420705648640",
-      "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "703766c5f449bb18bfa9dffb276981c47aaf694561568da259c4619619b572d0",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 2,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "single_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"purity\"]",
-      "input_row_id": "752979765984890884",
-      "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "0282ae57ac7ac3be0534da1ae7c4bdfdbec57be604b6d4b208b483ae3d790bcf",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 3,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "single_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"cheating\", \"fairness\", \"loyalty\", \"purity\"]",
-      "input_row_id": "548029362348765185",
-      "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "db4a54ecfa039c7a01a6e3f44542090f76801959223d8912e2136318b0af396f",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 4,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "single_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"care\", \"purity\"]",
-      "input_row_id": "753261224737898497",
-      "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "cf588d8fa2b357b653459ebd21792239dc083a51eedf6cf37c1282db86b4ccc4",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 5,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "single_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"cheating\", \"harm\", \"loyalty\"]",
-      "input_row_id": "751971806265810944",
-      "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "9811b38a514488c8a0b7ee1a7cd88f1b5dc332a17c7ed728f256efc8ef808d96",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 6,
-      "token_count": null,
-      "validation_errors": "[]",
-      "validation_status": "valid",
-      "variant_id": "single_label_json"
-    },
-    {
-      "attempt_count": 1,
-      "candidate_logprobs": null,
-      "config_hash": "889957796b757aa4615242110afeaee68e739a26b432e11b3f366ecb4848f163",
-      "dataset_id": "mftc",
-      "final_status": "completed",
-      "gold_labels": "[\"non-moral\"]",
-      "input_row_id": "676436368268984320",
-      "input_text": null,
-      "parsed_output": "{\"label\": \"authority\"}",
-      "prompt_group_id": "6e17458e7d32b1b4",
-      "prompt_hash": "56c123f25d18dcbfa4aa006b15ae32d8a0c1e4af8045d2434078ca1b57932495",
-      "raw_response": "{\"label\": \"authority\"}",
-      "run_id": "ministral_all_datasets__mftc",
-      "source_position": 7,
-      "token_count": null,
-      "validation_errors": "[]",
+      "tool_version": "0.2.0",
+      "validation_errors": [],
       "validation_status": "valid",
       "variant_id": "single_label_json"
     }

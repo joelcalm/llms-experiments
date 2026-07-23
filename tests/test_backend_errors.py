@@ -72,7 +72,7 @@ def test_backend_error_is_never_reported_as_completed(smoke_config, streaming: b
     rows = _read_rows(Path(manifest["run_id"] and config["output"]["directory"]))
     assert rows, "the failed rows must still be recorded, not dropped"
     assert {row["final_status"] for row in rows} == {"failed_backend"}
-    assert all("backend_error" in (row["validation_errors"] or "") for row in rows)
+    assert all(any("backend_error" in error for error in row["validation_errors"]) for row in rows)
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -93,7 +93,7 @@ def test_outage_during_inline_retry_stays_failed_backend(smoke_config, streaming
 
     rows = _read_rows(Path(config["output"]["directory"]))
     assert {row["final_status"] for row in rows} == {"failed_backend"}, "a retried outage is still an outage"
-    assert all("backend_error" in (row["validation_errors"] or "") for row in rows)
+    assert all(any("backend_error" in error for error in row["validation_errors"]) for row in rows)
 
 
 @pytest.mark.parametrize("streaming", [False, True])
