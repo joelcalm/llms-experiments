@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = ["vllm>=0.25.1,<0.26"]
+llama-cpp = ["llama-cpp-python>=0.2.0"]
 
 [project.scripts]
 llms-experiments = "llms_experiments.cli:main"

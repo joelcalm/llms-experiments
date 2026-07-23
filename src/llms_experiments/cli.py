@@ -60,7 +60,13 @@ def _overrides(args: argparse.Namespace) -> list[str]:
         "output": "output.directory",
         "backend": "model.backend",
     }
-    backend_names = {"vllm": "local_vllm", "openai-compatible": "openai_compatible", "fake": "fake"}
+    backend_names = {
+        "vllm": "local_vllm",
+        "openai-compatible": "openai_compatible",
+        "fake": "fake",
+        "llama-cpp": "llama_cpp",
+        "llama_cpp": "llama_cpp",
+    }
     for attribute, key in mappings.items():
         value = getattr(args, attribute, None)
         if value is not None:

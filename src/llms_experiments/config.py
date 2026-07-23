@@ -34,7 +34,7 @@ class DatasetConfig(ConfigSection):
 
 class ModelConfig(ConfigSection):
     name: str = Field(min_length=1)
-    backend: Literal["local_vllm", "openai_compatible", "fake"]
+    backend: Literal["local_vllm", "openai_compatible", "fake", "llama_cpp"]
 
 
 class VariantConfig(ConfigSection):

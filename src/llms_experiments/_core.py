@@ -327,8 +327,8 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
             raise ValueError("Missing required top-level key `input` (or `datasets`)")
         _validate_source(config["input"], "input")
         sources = [config["input"]]
-    if config["model"].get("backend") not in {"local_vllm", "openai_compatible", "fake"}:
-        raise ValueError("model.backend must be local_vllm, openai_compatible, or fake")
+    if config["model"].get("backend") not in {"local_vllm", "openai_compatible", "fake", "llama_cpp"}:
+        raise ValueError("model.backend must be local_vllm, openai_compatible, fake, or llama_cpp")
     vllm_environment = config["model"].get("vllm_environment", {})
     if not isinstance(vllm_environment, dict):
         raise ValueError("model.vllm_environment must be a mapping")
@@ -1185,11 +1185,106 @@ class OpenAICompatibleBackend:
         return None
 
 
+class LlamaCppBackend:
+    """CPU-friendly local GGUF model backend powered by llama-cpp-python."""
+
+    def __init__(self, model: dict[str, Any], resource_guard: dict[str, Any] | None = None) -> None:
+        del resource_guard
+        try:
+            import llama_cpp
+        except ImportError as exc:
+            raise RuntimeError(
+                "llama_cpp backend requires the llama-cpp-python package. "
+                "Install it with: pip install llama-cpp-python or pip install '.[llama-cpp]'"
+            ) from exc
+
+        self.llama_cpp = llama_cpp
+        self.model = model
+        model_path = model.get("model_path") or model.get("path") or model.get("name")
+        if not model_path:
+            raise ValueError("llama_cpp model config requires 'model_path', 'path', or 'name'.")
+
+        n_ctx = int(model.get("n_ctx", model.get("max_model_len", 2048)))
+        n_threads = int(model.get("n_threads", os.cpu_count() or 4))
+        n_batch = int(model.get("n_batch", 512))
+        verbose = bool(model.get("verbose", False))
+        n_gpu_layers = int(model.get("n_gpu_layers", 0))
+
+        self.llm = llama_cpp.Llama(
+            model_path=str(model_path),
+            n_ctx=n_ctx,
+            n_threads=n_threads,
+            n_batch=n_batch,
+            n_gpu_layers=n_gpu_layers,
+            verbose=verbose,
+            logits_all=True,
+        )
+
+    def _generate_one(self, prompt: str, variant: dict[str, Any]) -> Response:
+        try:
+            messages = conversation(variant.get("_system"), prompt)
+            req_mode = variant["request_mode"]
+
+            kwargs: dict[str, Any] = {
+                "messages": messages,
+                "temperature": 0.0,
+            }
+
+            if req_mode == "candidate_logprobs":
+                kwargs.update({
+                    "max_tokens": 1,
+                    "logprobs": True,
+                    "top_logprobs": top_logprobs_count(variant["candidates"]),
+                })
+            else:
+                kwargs["max_tokens"] = int(variant.get("max_tokens", 128))
+                if req_mode == "generate_with_logprobs":
+                    kwargs.update({
+                        "logprobs": True,
+                        "top_logprobs": int(variant.get("top_logprobs", 20)),
+                    })
+
+                if (schema := variant.get("_schema")):
+                    kwargs["response_format"] = {
+                        "type": "json_object",
+                        "schema": schema,
+                    }
+
+            data = self.llm.create_chat_completion(**kwargs)
+            choice = (data.get("choices") or [{}])[0]
+            raw = str((choice.get("message") or {}).get("content") or "")
+            token_count = int((data.get("usage") or {}).get("completion_tokens") or 0)
+            positions = extract_position_logprobs((choice.get("logprobs") or {}).get("content"))
+
+            if req_mode == "candidate_logprobs":
+                observed = flatten_position_logprobs(positions)
+                scores = aggregate_candidate_logprobs(observed, variant["candidates"])
+                return Response(json.dumps({"candidates": scores}), token_count, scores)
+
+            return Response(
+                raw,
+                token_count,
+                token_logprobs=positions if req_mode == "generate_with_logprobs" else None,
+            )
+        except Exception as exc:
+            return Response("", 0, None, f"llama_cpp_error: {exc}")
+
+    def generate(self, prompts: list[str], variant: dict[str, Any]) -> list[Response]:
+        return [self._generate_one(prompt, variant) for prompt in prompts]
+
+    def close(self) -> None:
+        if hasattr(self, "llm") and self.llm is not None:
+            del self.llm
+            self.llm = None
+
+
 def make_backend(model: dict[str, Any], resource_guard: dict[str, Any] | None = None) -> Backend:
     if model.get("backend") == "fake":
         return FakeBackend()
     if model.get("backend") == "openai_compatible":
         return OpenAICompatibleBackend(model, resource_guard)
+    if model.get("backend") == "llama_cpp":
+        return LlamaCppBackend(model, resource_guard)
     return VLLMBackend(model, resource_guard)
 
 
