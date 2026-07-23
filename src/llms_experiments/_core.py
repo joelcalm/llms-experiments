@@ -1029,7 +1029,7 @@ class VLLMBackend:
         if not gpu().get("available"):
             raise RuntimeError(
                 "GPU preflight failed: nvidia-smi cannot communicate with an NVIDIA driver. "
-                "Run `uv run python experiment-cli/experiment_cli.py gpu-preflight` for diagnostics."
+                "Run `llms-experiments doctor` for installation and driver diagnostics."
             )
         # vLLM V1 starts an EngineCore process.  CUDA must never be inherited
         # through fork after the telemetry preflight has touched torch.
@@ -2640,8 +2640,6 @@ def batch_command_args(
     run_dir = resolve(config, config["output"]["directory"])
     model = config["model"]
     command = [
-        "uv",
-        "run",
         "vllm",
         "run-batch",
         "-i",

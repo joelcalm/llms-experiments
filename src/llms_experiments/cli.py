@@ -17,6 +17,7 @@ from ._core import (
     prepare,
     run,
     run_matrix,
+    resolve,
     select_dataset,
     selected_entries,
 )
@@ -116,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, indent=2))
     elif args.command == "prepare":
         if "datasets" in config:
-            base_output = Path(config["output"]["directory"])
+            base_output = resolve(config, config["output"]["directory"])
             lanes = [
                 dataset_config(config, dataset_id, source, base_output)
                 for dataset_id, source in selected_entries(config, _csv(args.datasets))
