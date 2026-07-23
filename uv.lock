@@ -1836,6 +1836,18 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-cpp-python"
+version = "0.3.34"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "diskcache" },
+    { name = "jinja2" },
+    { name = "numpy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c1/2f/46487e949da42b31847853793ddbfd44c7414e94d4364c9a41f91f30af27/llama_cpp_python-0.3.34.tar.gz", hash = "sha256:d849d286d808284f1d3ec1bd6875572430d29d1f9574a010232caa4e9cef0e35", size = 71617302, upload-time = "2026-07-12T04:33:41.928Z" }
+
+[[package]]
 name = "llguidance"
 version = "1.7.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1870,6 +1882,9 @@ dependencies = [
 gpu = [
     { name = "vllm" },
 ]
+llama-cpp = [
+    { name = "llama-cpp-python" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1879,6 +1894,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "llama-cpp-python", marker = "extra == 'llama-cpp'", specifier = ">=0.2.0" },
     { name = "openai", specifier = ">=2.24.0" },
     { name = "pyarrow", specifier = ">=19.0.1" },
     { name = "pydantic", specifier = ">=2.10,<3" },
@@ -1886,7 +1902,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.0" },
     { name = "vllm", marker = "extra == 'gpu'", specifier = ">=0.25.1,<0.26" },
 ]
-provides-extras = ["gpu"]
+provides-extras = ["gpu", "llama-cpp"]
 
 [package.metadata.requires-dev]
 dev = [
