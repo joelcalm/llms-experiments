@@ -6,5 +6,6 @@ recursive-include docs *.md *.json
 recursive-include experiments *.yaml
 recursive-include experiment-cli *.py *.md *.json *.jsonl *.tsv *.csv
 prune experiment-cli/outputs
+prune experiment-cli/logs
 recursive-include condor *.md *.sh *.htcondor
 recursive-include slurm *.md *.sh
