@@ -1,0 +1,47 @@
+run:
+  id: "cpu-smollm2-live-test"
+
+model:
+  name: "SmolLM2-135M-Instruct-Q4_K_M.gguf"
+  backend: "llama_cpp"
+  model_path: "/tmp/smollm2_135m.gguf"
+  n_ctx: 2048
+  n_threads: 4
+  n_gpu_layers: 0
+
+variants:
+  - id: "single_label_json"
+    request_mode: "generate"
+    result_type: "single_label"
+    prompts:
+      - "experiment-cli/prompt/system.md"
+      - "experiment-cli/prompt/task-single-label.md"
+      - "experiment-cli/prompt/input.md"
+    validation:
+      schema: "experiment-cli/prompt/schema-single-label.json"
+      enum_from: "dataset_labels"
+
+  - id: "independent_yes_no_logits"
+    request_mode: "candidate_logprobs"
+    result_type: "fixed_binary_probe"
+    candidates: ["yes", "no"]
+    prompts:
+      - "experiment-cli/prompt/system.md"
+      - "experiment-cli/prompt/task-yes-no.md"
+      - "experiment-cli/prompt/input.md"
+
+input:
+  path: "experiment-cli/data/matrix_records.jsonl"
+  format: "jsonl"
+  id_column: "item_id"
+  text_column: "text"
+  labels_column: "gold_labels"
+  labels: [care, harm]
+  code_labels: {A: care, B: harm}
+  binary_question: "Does this text express care?"
+  prompt_parts:
+    theory: "experiment-cli/prompt/theory-mft.md"
+    definitions: "experiment-cli/prompt/definitions-mft.md"
+
+output:
+  directory: "results/cpu_smollm2_test"
