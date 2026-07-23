@@ -15,9 +15,9 @@ from ._core import (
     gpu,
     parse_batch,
     prepare,
+    resolve,
     run,
     run_matrix,
-    resolve,
     select_dataset,
     selected_entries,
 )
