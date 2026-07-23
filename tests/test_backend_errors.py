@@ -2,7 +2,7 @@
 
 This pins the bug that motivated merging the two execution engines: the
 non-streaming engine never inspected `Response.backend_error`, so a failed
-nvidia_api call was recorded as a completed row with empty candidates. The
+endpoint call was recorded as a completed row with empty candidates. The
 streaming engine checked it; the two had silently drifted apart.
 """
 
@@ -19,10 +19,10 @@ SMOKE = REPO_ROOT / "experiments" / "local_all_modes_smoke.yaml"
 
 
 class FailingBackend:
-    """Mimics NvidiaAPIBackend giving up after its HTTP retries.
+    """Mimics OpenAICompatibleBackend giving up after its HTTP retries.
 
     `raw` is empty and `backend_error` carries the whole story, matching the
-    real backend: it no longer fabricates a `{"nvidia_api_error": ...}` body
+    real backend: it no longer fabricates an endpoint-error body
     that a later retry could mistake for an off-schema model answer.
     """
 

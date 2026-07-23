@@ -19,6 +19,7 @@ CLI = REPO_ROOT / "experiment-cli" / "experiment_cli.py"
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 
 sys.path.insert(0, str(CLI.parent))
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 # Fields whose values legitimately change between identical runs, so they can
 # never be part of a golden comparison.
@@ -84,8 +85,8 @@ def normalise_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     """Keep the stable, behaviour-defining parts of a manifest.
 
     `variants` keeps prompt_group_id but not the tuning measurements: the group
-    id is a hash of the rendered prompt, which is exactly what a refactor must
-    not change.
+    id is a hash of the rendered prompt and therefore part of the result
+    contract.
     """
     cleaned = {k: v for k, v in manifest.items() if k not in VOLATILE_MANIFEST_KEYS}
     variants = cleaned.get("variants")
@@ -125,6 +126,6 @@ def assert_golden(name: str, payload: Any, update: bool) -> None:
     if expected != serialised:
         raise AssertionError(
             f"Golden mismatch for {name}.\n"
-            f"Behaviour changed against the pre-refactor baseline.\n"
+            f"Behaviour changed against the committed result contract.\n"
             f"If the change is intended, rerun with --golden-update and review the diff."
         )

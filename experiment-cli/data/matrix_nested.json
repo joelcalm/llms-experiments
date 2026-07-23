@@ -1,0 +1,16 @@
+[
+  {
+    "Tweets": [
+      {
+        "tweet_id": "nested-1",
+        "tweet_text": "A neighbour helps an injured child.",
+        "annotations": [{"annotation": "care"}]
+      },
+      {
+        "tweet_id": "nested-2",
+        "tweet_text": "A referee applies the rules equally.",
+        "annotations": [{"annotation": "harm"}]
+      }
+    ]
+  }
+]

@@ -1,0 +1,4 @@
+id;sentence;value_id;theory_id;slice
+csv-1;A neighbour helps an injured child.;care;mft;core
+csv-2;A person causes avoidable suffering.;harm;mft;core
+csv-ignore;This row belongs to another slice.;harm;mft;other

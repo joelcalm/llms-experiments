@@ -47,9 +47,9 @@ class RecordingSession:
 
 @pytest.fixture
 def backend(monkeypatch: pytest.MonkeyPatch):
-    def _make(**model: Any) -> tuple[cli.NvidiaAPIBackend, RecordingSession]:
-        monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
-        instance = cli.NvidiaAPIBackend({"name": "m", "backend": "nvidia_api", **model})
+    def _make(**model: Any) -> tuple[cli.OpenAICompatibleBackend, RecordingSession]:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        instance = cli.OpenAICompatibleBackend({"name": "m", "backend": "openai_compatible", **model})
         session = RecordingSession()
         instance.requests = session
         return instance, session
@@ -75,11 +75,10 @@ def test_generate_mode_sends_the_schema_as_response_format(backend) -> None:
 def test_the_schema_sent_is_the_enum_substituted_one(backend, tmp_path) -> None:
     """The engine hands the backend `_schema`, which is variant_schema()'s output.
 
-    This is the same substitution the parse path was getting wrong: what the
-    model is constrained to must match what the response is validated against.
+    The model constraint must match the schema used to validate its response.
     """
     config = cli.load_config(
-        REPO_ROOT / "experiments" / "ministral_all_datasets.yaml",
+        REPO_ROOT / "experiments" / "matrix_smoke.yaml",
         [f"output.directory={tmp_path}"],
         check_files=True,
     )

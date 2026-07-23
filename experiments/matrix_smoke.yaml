@@ -1,0 +1,127 @@
+run:
+  id: matrix_smoke
+  seed: 123
+
+datasets:
+  - id: nested_json
+    input:
+      path: experiment-cli/data/matrix_nested.json
+      format: nested_json
+      id_column: tweet_id
+      text_column: tweet_text
+      records_key: Tweets
+      labels_column: annotations
+      label_value_key: annotation
+      labels: &test_labels [care, harm]
+      code_labels: &test_codes {A: care, B: harm}
+      binary_question: Does this text express care?
+      prompt_parts: &mft_prompts {theory: experiment-cli/prompt/theory-mft.md, definitions: experiment-cli/prompt/definitions-mft.md}
+  - id: jsonl
+    input:
+      path: experiment-cli/data/matrix_records.jsonl
+      format: jsonl
+      id_column: item_id
+      text_column: text
+      labels_column: gold_labels
+      labels: *test_labels
+      code_labels: *test_codes
+      binary_question: Does this text express care?
+      prompt_parts: *mft_prompts
+  - id: paired_tsv
+    input:
+      path: experiment-cli/data/matrix_arguments.tsv
+      labels_path: experiment-cli/data/matrix_labels.tsv
+      format: paired_tsv
+      id_column: Argument ID
+      text_column: Premise
+      labels: *test_labels
+      code_labels: *test_codes
+      binary_question: Does this text express care?
+      prompt_parts: *mft_prompts
+  - id: filtered_csv
+    input:
+      path: experiment-cli/data/matrix_filtered.csv
+      format: csv
+      delimiter: ";"
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: mft, slice: core}
+      labels: *test_labels
+      code_labels: *test_codes
+      binary_question: Does this text express care?
+      prompt_parts: *mft_prompts
+
+model:
+  name: fake
+  backend: fake
+  max_model_len: 512
+  max_num_seqs: 8
+
+resources:
+  cpu:
+    cores: auto
+    reserve_cores: 1
+    affinity: false
+    thread_pool_size: 1
+
+variants:
+  - id: single_label_json
+    request_mode: generate
+    max_tokens: 32
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+    validation: {schema: experiment-cli/prompt/schema-single-label.json, enum_from: dataset_labels}
+  - id: multi_label_json
+    request_mode: generate
+    max_tokens: 48
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+    validation: {schema: experiment-cli/prompt/schema-multi-label.json, enum_from: dataset_labels}
+  - id: ordinal_score_json
+    request_mode: generate
+    max_tokens: 32
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+    validation: {schema: experiment-cli/prompt/schema-ordinal-score.json}
+  - id: single_label_code_logits
+    request_mode: candidate_logprobs
+    candidates_from: code_labels
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label-code.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
+  - id: independent_yes_no_logits
+    request_mode: candidate_logprobs
+    candidates: ["yes", "no"]
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-yes-no.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
+  - id: soft_multi_label_yes_no_logits
+    request_mode: candidate_logprobs
+    candidates: ["yes", "no"]
+    expand_over: dataset_labels
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md, experiment-cli/prompt/task-yes-no-target.md]
+
+batch:
+  mode: fixed
+  size: 4
+  candidates: [1, 2, 4]
+  warmup_rows: 2
+  min_size: 1
+  on_failure: halve
+
+streaming:
+  enabled: true
+  output_chunk_rows: 32
+
+validation:
+  enabled: true
+  retry:
+    enabled: true
+    max_attempts: 1
+    deferred: true
+    batch_size_divisor: 2
+    max_tokens_multiplier: 2
+    max_tokens_cap: 96
+    correction_prompt: experiment-cli/prompt/retry-structured-output.md
+
+output:
+  directory: results/matrix_smoke
+
+logging:
+  file: results/matrix_smoke/run.log
+  events: results/matrix_smoke/events.jsonl
+  level: INFO
