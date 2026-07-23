@@ -22,7 +22,7 @@ class DummyLlama:
         # Candidate logprobs strategies (single_label_code_logits, independent_yes_no_logits, soft_multi_label_yes_no_logits)
         if req_mode_has_candidates:
             top_logprobs = kwargs.get("top_logprobs", 5)
-            if top_logprobs == 2:  # yes/no logits
+            if top_logprobs == 7:  # candidate_count = 2 (yes/no)
                 content = [
                     {
                         "token": "yes",
@@ -33,7 +33,7 @@ class DummyLlama:
                         ],
                     }
                 ]
-            else:  # code logits (A, B, C)
+            else:  # candidate_count = 3 (A, B, C)
                 content = [
                     {
                         "token": "A",
@@ -133,7 +133,7 @@ def test_strategy_1_single_label_json(mock_llama_backend: LlamaCppBackend) -> No
     responses = mock_llama_backend.generate(["Classify this input."], variant)
     assert len(responses) == 1
     assert responses[0].backend_error is None
-    assert json.loads(responses[0].text) == {"label": "fairness"}
+    assert json.loads(responses[0].raw) == {"label": "fairness"}
 
 
 def test_strategy_2_multi_label_json(mock_llama_backend: LlamaCppBackend) -> None:
@@ -150,7 +150,7 @@ def test_strategy_2_multi_label_json(mock_llama_backend: LlamaCppBackend) -> Non
     responses = mock_llama_backend.generate(["Classify all applicable labels."], variant)
     assert len(responses) == 1
     assert responses[0].backend_error is None
-    assert json.loads(responses[0].text) == {"labels": ["care", "purity"]}
+    assert json.loads(responses[0].raw) == {"labels": ["care", "purity"]}
 
 
 def test_strategy_3_ordinal_score_json(mock_llama_backend: LlamaCppBackend) -> None:
@@ -167,7 +167,7 @@ def test_strategy_3_ordinal_score_json(mock_llama_backend: LlamaCppBackend) -> N
     responses = mock_llama_backend.generate(["Rate intensity from 1 to 5."], variant)
     assert len(responses) == 1
     assert responses[0].backend_error is None
-    assert json.loads(responses[0].text) == {"score": 4}
+    assert json.loads(responses[0].raw) == {"score": 4}
 
 
 def test_strategy_4_single_label_code_logits(mock_llama_backend: LlamaCppBackend) -> None:
@@ -220,7 +220,7 @@ def test_strategy_7_verbalized_confidence(mock_llama_backend: LlamaCppBackend) -
     responses = mock_llama_backend.generate(["Classify and state confidence."], variant)
     assert len(responses) == 1
     assert responses[0].backend_error is None
-    parsed = json.loads(responses[0].text)
+    parsed = json.loads(responses[0].raw)
     assert parsed["label"] == "care"
     assert parsed["confidence_tens"] == 8
     assert parsed["confidence_units"] == 5
