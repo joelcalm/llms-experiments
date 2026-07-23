@@ -27,6 +27,7 @@ resources:
     thread_pool_size: 1
 variants:
   - id: soft_multi_label_yes_no_logits
+    result_type: label_yes_no_logprobs
     request_mode: candidate_logprobs
     candidates: ["yes", "no"]
     expand_over: dataset_labels

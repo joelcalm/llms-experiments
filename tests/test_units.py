@@ -239,7 +239,7 @@ def _result_row(position: int) -> dict:
 
 
 def _write_minimal_config(tmp_path: Path, *, backend: str = "fake", variants_duplicated: bool = False) -> Path:
-    variant = {"id": "v1", "request_mode": "generate", "prompts": ["p.md"]}
+    variant = {"id": "v1", "result_type": "single_label", "request_mode": "generate", "prompts": ["p.md"]}
     variants = [variant, dict(variant)] if variants_duplicated else [variant]
     payload = {
         "run": {"id": "test"},

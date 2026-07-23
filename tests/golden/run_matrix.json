@@ -13,7 +13,7 @@
             -1.0
           ]
         ],
-        "config_hash": "20fbc7f230c3241b687ecab26baacefa220cb515fed71d0f79fdd61dc5ef220f",
+        "config_hash": "e533403c8d1d0bfbd8dd7ab7f0c2235bd9d6c77a865fbda0cc4e4aa7c24de482",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -49,7 +49,7 @@
             -1.0
           ]
         ],
-        "config_hash": "20fbc7f230c3241b687ecab26baacefa220cb515fed71d0f79fdd61dc5ef220f",
+        "config_hash": "e533403c8d1d0bfbd8dd7ab7f0c2235bd9d6c77a865fbda0cc4e4aa7c24de482",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -76,7 +76,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "69a8b891e91afb5aacec12b9cf77c25af6c8e30765ba858140c315330e44eb88",
+        "config_hash": "eae0670e88b5d59bd4f6ae2afc902fa5c0851b4b80ff2848818f29ff17949f60",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -106,7 +106,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "69a8b891e91afb5aacec12b9cf77c25af6c8e30765ba858140c315330e44eb88",
+        "config_hash": "eae0670e88b5d59bd4f6ae2afc902fa5c0851b4b80ff2848818f29ff17949f60",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -136,7 +136,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "473cefc44831c6fe766e56fa864012c4a0e0be9495fb59ae72528b4cd4f8c6af",
+        "config_hash": "ea951c0467b0c743dd4270586f7526dfbcacd2febfd232065528ad5980158b45",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -166,7 +166,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "473cefc44831c6fe766e56fa864012c4a0e0be9495fb59ae72528b4cd4f8c6af",
+        "config_hash": "ea951c0467b0c743dd4270586f7526dfbcacd2febfd232065528ad5980158b45",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -205,7 +205,7 @@
             -1.0
           ]
         ],
-        "config_hash": "0e81855b3586d7f76a90c7ad682fb788b78aac62931775931058a67752824a49",
+        "config_hash": "35492574f61cef32d51ffd12cc9cbdfd7c331cfacb18768595275a6548133138",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -241,7 +241,7 @@
             -1.0
           ]
         ],
-        "config_hash": "0e81855b3586d7f76a90c7ad682fb788b78aac62931775931058a67752824a49",
+        "config_hash": "35492574f61cef32d51ffd12cc9cbdfd7c331cfacb18768595275a6548133138",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -268,7 +268,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "f4a47dd05de68d8ab1be8afed64bf840cfd5451b92568c9454901f4dcafa1a49",
+        "config_hash": "6f8bdc3a476be8b3245962410bfaead6250ecbbcf94a846d222b57c709941e90",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -297,7 +297,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "f4a47dd05de68d8ab1be8afed64bf840cfd5451b92568c9454901f4dcafa1a49",
+        "config_hash": "6f8bdc3a476be8b3245962410bfaead6250ecbbcf94a846d222b57c709941e90",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -335,7 +335,7 @@
             -1.0
           ]
         ],
-        "config_hash": "b015af26f843dba5f57e1ae73cfefa901bb06b47754d103c2d8c108198cfe511",
+        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -371,7 +371,7 @@
             -1.0
           ]
         ],
-        "config_hash": "b015af26f843dba5f57e1ae73cfefa901bb06b47754d103c2d8c108198cfe511",
+        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -407,7 +407,7 @@
             -1.0
           ]
         ],
-        "config_hash": "b015af26f843dba5f57e1ae73cfefa901bb06b47754d103c2d8c108198cfe511",
+        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -443,7 +443,7 @@
             -1.0
           ]
         ],
-        "config_hash": "b015af26f843dba5f57e1ae73cfefa901bb06b47754d103c2d8c108198cfe511",
+        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -481,7 +481,7 @@
             -1.0
           ]
         ],
-        "config_hash": "a1293462621b34f51c1c218329ebcd67899cbddef0d6f5ab58aa2fa2bb891226",
+        "config_hash": "408fda5ff4b3150cfa7ada3d2d3615bcfca414cab4376dcfed44ed8d58e2df07",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -517,7 +517,7 @@
             -1.0
           ]
         ],
-        "config_hash": "a1293462621b34f51c1c218329ebcd67899cbddef0d6f5ab58aa2fa2bb891226",
+        "config_hash": "408fda5ff4b3150cfa7ada3d2d3615bcfca414cab4376dcfed44ed8d58e2df07",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -544,7 +544,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "9dc399bfd776cf939bb5b699e2b8fca0bfd112f0113bb1abb69e53b15faadd7f",
+        "config_hash": "19e25007a0ae110134ec7de79f3ec732a7fe0487c2e41cf9ecb175ee84fe3021",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -574,7 +574,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "9dc399bfd776cf939bb5b699e2b8fca0bfd112f0113bb1abb69e53b15faadd7f",
+        "config_hash": "19e25007a0ae110134ec7de79f3ec732a7fe0487c2e41cf9ecb175ee84fe3021",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -604,7 +604,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "8ad19f5c6f327eb3a955eae6588554b458af29ca5a05d0d70843719026c0a4e4",
+        "config_hash": "c8fa034c81ee65242967d699d6baea172fa70794c05f3c9d7644a7bee2abd207",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -634,7 +634,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "8ad19f5c6f327eb3a955eae6588554b458af29ca5a05d0d70843719026c0a4e4",
+        "config_hash": "c8fa034c81ee65242967d699d6baea172fa70794c05f3c9d7644a7bee2abd207",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -673,7 +673,7 @@
             -1.0
           ]
         ],
-        "config_hash": "965e54bdad65a39511486a5e7ea4e6e182efafd846679bc87785a3b8841b1ed6",
+        "config_hash": "9eac0038e04904308622e1a50419fd2ba3bc4607b365c0c18c39396a173416fc",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -709,7 +709,7 @@
             -1.0
           ]
         ],
-        "config_hash": "965e54bdad65a39511486a5e7ea4e6e182efafd846679bc87785a3b8841b1ed6",
+        "config_hash": "9eac0038e04904308622e1a50419fd2ba3bc4607b365c0c18c39396a173416fc",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -736,7 +736,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "6dc0b4b618c3e5a7be174547f0d4870f6b95b7915435d3ad462f625073225071",
+        "config_hash": "c9ba6335fa738c51dffa479935275ebc55dbd223d9280fc4aa776bc057fbe21e",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -765,7 +765,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "6dc0b4b618c3e5a7be174547f0d4870f6b95b7915435d3ad462f625073225071",
+        "config_hash": "c9ba6335fa738c51dffa479935275ebc55dbd223d9280fc4aa776bc057fbe21e",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -803,7 +803,7 @@
             -1.0
           ]
         ],
-        "config_hash": "95c5fce036d7c28b8a5e29a37a0d9012c860322a8d44f6a3529e7328379e1fd1",
+        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -839,7 +839,7 @@
             -1.0
           ]
         ],
-        "config_hash": "95c5fce036d7c28b8a5e29a37a0d9012c860322a8d44f6a3529e7328379e1fd1",
+        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -875,7 +875,7 @@
             -1.0
           ]
         ],
-        "config_hash": "95c5fce036d7c28b8a5e29a37a0d9012c860322a8d44f6a3529e7328379e1fd1",
+        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -911,7 +911,7 @@
             -1.0
           ]
         ],
-        "config_hash": "95c5fce036d7c28b8a5e29a37a0d9012c860322a8d44f6a3529e7328379e1fd1",
+        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -949,7 +949,7 @@
             -1.0
           ]
         ],
-        "config_hash": "553f40888773afa97ac0d8e2ac4a9529e8e13bc850a8e1e8c63a01a3c8c5bb13",
+        "config_hash": "c039990356e230c2626309774e573bf363215269d60e1d1886a127b9a22edf53",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -985,7 +985,7 @@
             -1.0
           ]
         ],
-        "config_hash": "553f40888773afa97ac0d8e2ac4a9529e8e13bc850a8e1e8c63a01a3c8c5bb13",
+        "config_hash": "c039990356e230c2626309774e573bf363215269d60e1d1886a127b9a22edf53",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1012,7 +1012,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "9a9615fb41f415b2d6bec860f5f59ce3e149b4eae48f5e78e6318810d318995e",
+        "config_hash": "bc53daa1923357acf7129f2035001030c160e67a6a1213c7aae10d624e44ad3e",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1042,7 +1042,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "9a9615fb41f415b2d6bec860f5f59ce3e149b4eae48f5e78e6318810d318995e",
+        "config_hash": "bc53daa1923357acf7129f2035001030c160e67a6a1213c7aae10d624e44ad3e",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1072,7 +1072,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "dd7cad29e0f4fd51c730eae8dfdac93c01bcade0e72b907068fee50afd6c33d2",
+        "config_hash": "38f392022c42c5523c5fcd5bd6084f39484cb3672d0f478070926e7d5f120986",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1102,7 +1102,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "dd7cad29e0f4fd51c730eae8dfdac93c01bcade0e72b907068fee50afd6c33d2",
+        "config_hash": "38f392022c42c5523c5fcd5bd6084f39484cb3672d0f478070926e7d5f120986",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1141,7 +1141,7 @@
             -1.0
           ]
         ],
-        "config_hash": "a1d4d0e1542a5adc0212be0bab65d12e4928f08bb0aa673dbae581074eb8ad0b",
+        "config_hash": "87c1f7fae11aa9ee76e09bfd568570b4cc50e029c962727442c0bc5aad25aa59",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1177,7 +1177,7 @@
             -1.0
           ]
         ],
-        "config_hash": "a1d4d0e1542a5adc0212be0bab65d12e4928f08bb0aa673dbae581074eb8ad0b",
+        "config_hash": "87c1f7fae11aa9ee76e09bfd568570b4cc50e029c962727442c0bc5aad25aa59",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1204,7 +1204,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "013a551bdcb1437e2ef572dc82245bc9f7cfdb4ae51151295e78af05c0f111bd",
+        "config_hash": "cb6446dc8df0381ee97519b8927ef07fb7833fe8a1085759c98f2a43cd5d326c",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1233,7 +1233,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "013a551bdcb1437e2ef572dc82245bc9f7cfdb4ae51151295e78af05c0f111bd",
+        "config_hash": "cb6446dc8df0381ee97519b8927ef07fb7833fe8a1085759c98f2a43cd5d326c",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1271,7 +1271,7 @@
             -1.0
           ]
         ],
-        "config_hash": "d64e0e6a39f9205bc07e2495bae504cc94696350008aebd4c7b6dea650c8b7ca",
+        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1307,7 +1307,7 @@
             -1.0
           ]
         ],
-        "config_hash": "d64e0e6a39f9205bc07e2495bae504cc94696350008aebd4c7b6dea650c8b7ca",
+        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1343,7 +1343,7 @@
             -1.0
           ]
         ],
-        "config_hash": "d64e0e6a39f9205bc07e2495bae504cc94696350008aebd4c7b6dea650c8b7ca",
+        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1379,7 +1379,7 @@
             -1.0
           ]
         ],
-        "config_hash": "d64e0e6a39f9205bc07e2495bae504cc94696350008aebd4c7b6dea650c8b7ca",
+        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1417,7 +1417,7 @@
             -1.0
           ]
         ],
-        "config_hash": "b07985df86d8eb3f2b6717b061ba4a7caf85025125de58e3b50c1ef1b9feea6c",
+        "config_hash": "b428c6ce3da4df9a4ae2b19d4c3834b636d075b6e95b7f90b4e004c240870874",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1453,7 +1453,7 @@
             -1.0
           ]
         ],
-        "config_hash": "b07985df86d8eb3f2b6717b061ba4a7caf85025125de58e3b50c1ef1b9feea6c",
+        "config_hash": "b428c6ce3da4df9a4ae2b19d4c3834b636d075b6e95b7f90b4e004c240870874",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1480,7 +1480,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "64ef4103ba9f957361d26599ee688d19b57edb72e7412abcc0c63a5b82a03cbf",
+        "config_hash": "bbf8dd2637fe57e4c51d4b211c371c5c0dbed122f11c67ef4b65dd180dd23ac4",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1510,7 +1510,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "64ef4103ba9f957361d26599ee688d19b57edb72e7412abcc0c63a5b82a03cbf",
+        "config_hash": "bbf8dd2637fe57e4c51d4b211c371c5c0dbed122f11c67ef4b65dd180dd23ac4",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1540,7 +1540,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "04bc2d3f725e72c533568202f38f681871b1480a5b04a03f64b1fc03083f24cd",
+        "config_hash": "071e0fe538927054f4483352ef76bc757c67439ce81a72d2f2effe7d8a0836fc",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1570,7 +1570,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "04bc2d3f725e72c533568202f38f681871b1480a5b04a03f64b1fc03083f24cd",
+        "config_hash": "071e0fe538927054f4483352ef76bc757c67439ce81a72d2f2effe7d8a0836fc",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1609,7 +1609,7 @@
             -1.0
           ]
         ],
-        "config_hash": "514f952a78301797a31e5c5b5d2f237788d6fdb36f26d781938064721d125fc6",
+        "config_hash": "4818cca0968736191547bc133a509afd2be144c5306e6aa5afd8170223f92b4a",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1645,7 +1645,7 @@
             -1.0
           ]
         ],
-        "config_hash": "514f952a78301797a31e5c5b5d2f237788d6fdb36f26d781938064721d125fc6",
+        "config_hash": "4818cca0968736191547bc133a509afd2be144c5306e6aa5afd8170223f92b4a",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1672,7 +1672,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "62baa4d3d58a12a479071c42e3bf2f155bbca05fe0b9e95d75a6e6a3c3b4710e",
+        "config_hash": "f6defce85d0e9fc721e99addd72bb5764a98c256e0ce5abc4dc04d17124fe505",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1701,7 +1701,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "62baa4d3d58a12a479071c42e3bf2f155bbca05fe0b9e95d75a6e6a3c3b4710e",
+        "config_hash": "f6defce85d0e9fc721e99addd72bb5764a98c256e0ce5abc4dc04d17124fe505",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1739,7 +1739,7 @@
             -1.0
           ]
         ],
-        "config_hash": "0a492d47804b566026b0162bb07113f4ce8197f796ca9d86aa5b4fde5461ec85",
+        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1775,7 +1775,7 @@
             -1.0
           ]
         ],
-        "config_hash": "0a492d47804b566026b0162bb07113f4ce8197f796ca9d86aa5b4fde5461ec85",
+        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1811,7 +1811,7 @@
             -1.0
           ]
         ],
-        "config_hash": "0a492d47804b566026b0162bb07113f4ce8197f796ca9d86aa5b4fde5461ec85",
+        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1847,7 +1847,7 @@
             -1.0
           ]
         ],
-        "config_hash": "0a492d47804b566026b0162bb07113f4ce8197f796ca9d86aa5b4fde5461ec85",
+        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1973,6 +1973,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "single_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-single-label.json"
@@ -1989,6 +1990,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "multi_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-multi-label.json"
@@ -2005,6 +2007,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "ordinal_score",
               "validation": {
                 "schema": "experiment-cli/prompt/schema-ordinal-score.json"
               }
@@ -2019,7 +2022,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "categorical_logprobs"
             },
             {
               "candidates": [
@@ -2034,7 +2038,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "fixed_binary_probe"
             },
             {
               "candidates": [
@@ -2050,7 +2055,8 @@
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "label_yes_no_logprobs"
             }
           ]
         },
@@ -2184,6 +2190,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "single_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-single-label.json"
@@ -2200,6 +2207,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "multi_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-multi-label.json"
@@ -2216,6 +2224,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "ordinal_score",
               "validation": {
                 "schema": "experiment-cli/prompt/schema-ordinal-score.json"
               }
@@ -2230,7 +2239,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "categorical_logprobs"
             },
             {
               "candidates": [
@@ -2245,7 +2255,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "fixed_binary_probe"
             },
             {
               "candidates": [
@@ -2261,7 +2272,8 @@
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "label_yes_no_logprobs"
             }
           ]
         },
@@ -2395,6 +2407,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "single_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-single-label.json"
@@ -2411,6 +2424,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "multi_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-multi-label.json"
@@ -2427,6 +2441,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "ordinal_score",
               "validation": {
                 "schema": "experiment-cli/prompt/schema-ordinal-score.json"
               }
@@ -2441,7 +2456,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "categorical_logprobs"
             },
             {
               "candidates": [
@@ -2456,7 +2472,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "fixed_binary_probe"
             },
             {
               "candidates": [
@@ -2472,7 +2489,8 @@
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "label_yes_no_logprobs"
             }
           ]
         },
@@ -2611,6 +2629,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "single_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-single-label.json"
@@ -2627,6 +2646,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "multi_label",
               "validation": {
                 "enum_from": "dataset_labels",
                 "schema": "experiment-cli/prompt/schema-multi-label.json"
@@ -2643,6 +2663,7 @@
                 "experiment-cli/prompt/input.md"
               ],
               "request_mode": "generate",
+              "result_type": "ordinal_score",
               "validation": {
                 "schema": "experiment-cli/prompt/schema-ordinal-score.json"
               }
@@ -2657,7 +2678,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "categorical_logprobs"
             },
             {
               "candidates": [
@@ -2672,7 +2694,8 @@
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "fixed_binary_probe"
             },
             {
               "candidates": [
@@ -2688,7 +2711,8 @@
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
               ],
-              "request_mode": "candidate_logprobs"
+              "request_mode": "candidate_logprobs",
+              "result_type": "label_yes_no_logprobs"
             }
           ]
         },

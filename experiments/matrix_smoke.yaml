@@ -67,29 +67,35 @@ resources:
 
 variants:
   - id: single_label_json
+    result_type: single_label
     request_mode: generate
     max_tokens: 32
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-single-label.json, enum_from: dataset_labels}
   - id: multi_label_json
+    result_type: multi_label
     request_mode: generate
     max_tokens: 48
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-multi-label.json, enum_from: dataset_labels}
   - id: ordinal_score_json
+    result_type: ordinal_score
     request_mode: generate
     max_tokens: 32
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-ordinal-score.json}
   - id: single_label_code_logits
+    result_type: categorical_logprobs
     request_mode: candidate_logprobs
     candidates_from: code_labels
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label-code.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
   - id: independent_yes_no_logits
+    result_type: fixed_binary_probe
     request_mode: candidate_logprobs
     candidates: ["yes", "no"]
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-yes-no.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
   - id: soft_multi_label_yes_no_logits
+    result_type: label_yes_no_logprobs
     request_mode: candidate_logprobs
     candidates: ["yes", "no"]
     expand_over: dataset_labels

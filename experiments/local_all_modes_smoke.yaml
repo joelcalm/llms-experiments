@@ -29,25 +29,30 @@ resources:
     thread_pool_size: 1
 variants:
   - id: single_label_json
+    result_type: single_label
     request_mode: generate
     max_tokens: 16
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-single-label.json}
   - id: multi_label_json
+    result_type: multi_label
     request_mode: generate
     max_tokens: 16
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-multi-label.json}
   - id: ordinal_score_json
+    result_type: ordinal_score
     request_mode: generate
     max_tokens: 16
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
     validation: {schema: experiment-cli/prompt/schema-ordinal-score.json}
   - id: single_label_code_logits
+    result_type: categorical_logprobs
     request_mode: candidate_logprobs
     candidates: [A, B, C]
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label-code.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
   - id: independent_yes_no_logits
+    result_type: fixed_binary_probe
     request_mode: candidate_logprobs
     candidates: ["yes", "no"]
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-yes-no.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]

@@ -98,6 +98,7 @@
             "experiment-cli/prompt/input.md"
           ],
           "request_mode": "generate",
+          "result_type": "single_label",
           "validation": {
             "enum_from": "dataset_labels",
             "schema": "experiment-cli/prompt/schema-single-label.json"
@@ -114,6 +115,7 @@
             "experiment-cli/prompt/input.md"
           ],
           "request_mode": "generate",
+          "result_type": "multi_label",
           "validation": {
             "enum_from": "dataset_labels",
             "schema": "experiment-cli/prompt/schema-multi-label.json"
@@ -130,6 +132,7 @@
             "experiment-cli/prompt/input.md"
           ],
           "request_mode": "generate",
+          "result_type": "ordinal_score",
           "validation": {
             "schema": "experiment-cli/prompt/schema-ordinal-score.json"
           }
@@ -144,7 +147,8 @@
             "experiment-cli/prompt/candidate-answer.md",
             "experiment-cli/prompt/input.md"
           ],
-          "request_mode": "candidate_logprobs"
+          "request_mode": "candidate_logprobs",
+          "result_type": "categorical_logprobs"
         },
         {
           "candidates": [
@@ -159,7 +163,8 @@
             "experiment-cli/prompt/candidate-answer.md",
             "experiment-cli/prompt/input.md"
           ],
-          "request_mode": "candidate_logprobs"
+          "request_mode": "candidate_logprobs",
+          "result_type": "fixed_binary_probe"
         },
         {
           "candidates": [
@@ -175,7 +180,8 @@
             "experiment-cli/prompt/input.md",
             "experiment-cli/prompt/task-yes-no-target.md"
           ],
-          "request_mode": "candidate_logprobs"
+          "request_mode": "candidate_logprobs",
+          "result_type": "label_yes_no_logprobs"
         }
       ]
     },
@@ -217,7 +223,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "e4fee34acaa838d3290a62e84093d22febffaaeb2c5e6846235dec35308eac8d",
+      "config_hash": "99931f61a4f518ec46639144b0cbae4d363978c115021d40e36025197b59c948",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",
@@ -244,7 +250,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "e4fee34acaa838d3290a62e84093d22febffaaeb2c5e6846235dec35308eac8d",
+      "config_hash": "99931f61a4f518ec46639144b0cbae4d363978c115021d40e36025197b59c948",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",
@@ -271,7 +277,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "e35fc6cdc40e1a1915deab7dfbde1da6a2943ab66d8bbed102828b27805c36b9",
+      "config_hash": "759a2c071f3e84fa92e56915ddd0831e2e55dc151123877026b022143abd4d1c",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",
@@ -298,7 +304,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "e35fc6cdc40e1a1915deab7dfbde1da6a2943ab66d8bbed102828b27805c36b9",
+      "config_hash": "759a2c071f3e84fa92e56915ddd0831e2e55dc151123877026b022143abd4d1c",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",

@@ -230,6 +230,7 @@ def validate_config(config: dict[str, Any], *, check_files: bool = False) -> Non
         if not identifier or identifier in seen:
             raise ValueError("Every variant needs a unique id")
         seen.add(identifier)
+        semantic_result_type(variant)
         if variant.get("request_mode") not in MODES:
             raise ValueError(f"{identifier}: unsupported request_mode")
         if not variant.get("prompts"):
