@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 
 import experiment_cli as shim
 import pytest
@@ -50,6 +51,9 @@ def test_configuration_schema_is_machine_readable() -> None:
     schema = configuration_schema()
     assert schema["title"] == "ExperimentConfig"
     assert {"run", "model", "variants", "output"}.issubset(schema["required"])
+    committed = json.loads((REPO_ROOT / "docs" / "config.schema.json").read_text(encoding="utf-8"))
+    assert committed["$schema"].endswith("2020-12/schema")
+    assert committed["title"] == schema["title"]
 
 
 def test_supported_cli_surface_has_only_five_commands() -> None:
@@ -63,6 +67,25 @@ def test_validate_and_doctor_run_without_a_gpu(capsys) -> None:
     assert "Valid configuration" in capsys.readouterr().out
     assert main(["doctor"]) == 0
     assert '"package": "ok"' in capsys.readouterr().out
+
+
+def test_prepare_matrix_reports_each_request_and_launch_command(tmp_path, capsys) -> None:
+    assert (
+        main(
+            [
+                "prepare",
+                str(REPO_ROOT / "experiments" / "matrix_smoke.yaml"),
+                "--datasets",
+                "nested_json,jsonl",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["requests"]) == len(payload["launch_commands"]) == 2
+    assert all("vllm run-batch" in command for command in payload["launch_commands"])
 
 
 def test_v02_shim_maps_legacy_matrix_commands() -> None:

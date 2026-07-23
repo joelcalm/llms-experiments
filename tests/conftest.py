@@ -89,6 +89,11 @@ def normalise_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     contract.
     """
     cleaned = {k: v for k, v in manifest.items() if k not in VOLATILE_MANIFEST_KEYS}
+    if isinstance(cleaned.get("effective_config"), dict):
+        effective = dict(cleaned["effective_config"])
+        effective.pop("output", None)
+        effective.pop("logging", None)
+        cleaned["effective_config"] = effective
     variants = cleaned.get("variants")
     if isinstance(variants, dict):
         cleaned["variants"] = {

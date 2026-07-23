@@ -44,11 +44,6 @@
         "path": "experiment-cli/data/smoke.parquet",
         "text_column": "text"
       },
-      "logging": {
-        "events": "results/local_all_modes_smoke/logs/events.jsonl",
-        "file": "results/local_all_modes_smoke/logs/run.log",
-        "level": "INFO"
-      },
       "model": {
         "backend": "fake",
         "enable_prefix_caching": true,
@@ -58,12 +53,6 @@
         "max_num_seqs": 128,
         "name": "Qwen/Qwen3.5-0.8B",
         "synchronize_cuda": false
-      },
-      "output": {
-        "directory": "/tmp/pytest-of-alono/pytest-117/test_run_smoke0/run",
-        "format": "parquet",
-        "include_raw_response": true,
-        "include_text": false
       },
       "resources": {
         "cpu": {

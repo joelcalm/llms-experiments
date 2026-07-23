@@ -1913,19 +1913,11 @@
             "records_key": "Tweets",
             "text_column": "tweet_text"
           },
-          "logging": {
-            "events": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/nested_json.events.jsonl",
-            "file": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/nested_json.log",
-            "level": "INFO"
-          },
           "model": {
             "backend": "fake",
             "max_model_len": 512,
             "max_num_seqs": 8,
             "name": "fake"
-          },
-          "output": {
-            "directory": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/dataset=nested_json"
           },
           "resources": {
             "cpu": {
@@ -2132,19 +2124,11 @@
             },
             "text_column": "text"
           },
-          "logging": {
-            "events": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/jsonl.events.jsonl",
-            "file": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/jsonl.log",
-            "level": "INFO"
-          },
           "model": {
             "backend": "fake",
             "max_model_len": 512,
             "max_num_seqs": 8,
             "name": "fake"
-          },
-          "output": {
-            "directory": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/dataset=jsonl"
           },
           "resources": {
             "cpu": {
@@ -2351,19 +2335,11 @@
             },
             "text_column": "Premise"
           },
-          "logging": {
-            "events": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/paired_tsv.events.jsonl",
-            "file": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/paired_tsv.log",
-            "level": "INFO"
-          },
           "model": {
             "backend": "fake",
             "max_model_len": 512,
             "max_num_seqs": 8,
             "name": "fake"
-          },
-          "output": {
-            "directory": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/dataset=paired_tsv"
           },
           "resources": {
             "cpu": {
@@ -2575,19 +2551,11 @@
               "theory_id": "mft"
             }
           },
-          "logging": {
-            "events": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/filtered_csv.events.jsonl",
-            "file": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/logs/filtered_csv.log",
-            "level": "INFO"
-          },
           "model": {
             "backend": "fake",
             "max_model_len": 512,
             "max_num_seqs": 8,
             "name": "fake"
-          },
-          "output": {
-            "directory": "/tmp/pytest-of-alono/pytest-117/test_run_matrix0/matrix/dataset=filtered_csv"
           },
           "resources": {
             "cpu": {

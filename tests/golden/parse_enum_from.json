@@ -38,19 +38,11 @@
         "records_key": "Tweets",
         "text_column": "tweet_text"
       },
-      "logging": {
-        "events": "results/matrix_smoke/events.jsonl",
-        "file": "results/matrix_smoke/run.log",
-        "level": "INFO"
-      },
       "model": {
         "backend": "fake",
         "max_model_len": 512,
         "max_num_seqs": 8,
         "name": "fake"
-      },
-      "output": {
-        "directory": "/tmp/pytest-of-alono/pytest-117/test_prepare_parse_roundtrip_h0/batch/dataset=nested_json"
       },
       "resources": {
         "cpu": {

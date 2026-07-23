@@ -11,13 +11,14 @@ from . import __version__
 from ._core import (
     apply_resource_guard,
     batch_command,
+    dataset_config,
     gpu,
     parse_batch,
     prepare,
-    prepare_matrix,
     run,
     run_matrix,
     select_dataset,
+    selected_entries,
 )
 from .config import load_config
 
@@ -114,8 +115,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(result, indent=2))
     elif args.command == "prepare":
-        paths = prepare_matrix(config, _csv(args.datasets)) if "datasets" in config else [prepare(config)]
-        payload = {"requests": [str(path) for path in paths], "launch_command": batch_command(config)}
+        if "datasets" in config:
+            base_output = Path(config["output"]["directory"])
+            lanes = [
+                dataset_config(config, dataset_id, source, base_output)
+                for dataset_id, source in selected_entries(config, _csv(args.datasets))
+            ]
+        else:
+            lanes = [config]
+        paths = [prepare(lane) for lane in lanes]
+        payload = {
+            "requests": [str(path) for path in paths],
+            "launch_commands": [batch_command(lane) for lane in lanes],
+        }
         print(json.dumps(payload, indent=2))
     else:
         if "datasets" in config and not args.dataset:
