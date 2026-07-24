@@ -4,6 +4,8 @@ These pages describe the installable `llms-experiments` package at version
 `0.2.x` and its five CLI commands (`validate`, `run`, `prepare`, `parse`, and
 `doctor`).
 
+- [Getting started](getting-started.md): installation, the end-to-end data
+  flow, code navigation, and how to add an extension.
 - [Architecture](architecture.md): package boundaries, processor compilation,
   extension points, and durable resume behavior.
 - [Configuration](configuration.md): the YAML contract, supported inputs,

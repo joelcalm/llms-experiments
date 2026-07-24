@@ -18,7 +18,8 @@ This package executes inference runs and records durable predictions. It does no
 - **Engine Persistence:** Model engines remain warm across matrix evaluations to eliminate reload overheads.
 - **Composable Processing:** Ordered YAML stages own row fan-out, JSON parsing, schema validation, candidate log probabilities, and verbalized-confidence enrichment.
 - **Resumable & Atomic Operations:** State is tracked in SQLite. Parquet, CSV, and JSONL parts are published atomically before their resume keys are committed.
-- **Adaptive Batch Tuning:** Automatically tunes GPU batch sizes dynamically,halving sizes upon out-of-memory events and retrying safely.
+- **Adaptive Batch Tuning:** Automatically tunes GPU batch sizes dynamically,
+  halving sizes upon out-of-memory events and retrying safely.
 - **Explicit Extension Interfaces:** Abstract backends, inputs, processing stages, and output stores use small, reviewable factory maps.
 
 ---
