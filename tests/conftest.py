@@ -104,6 +104,8 @@ def normalise_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         }
     if isinstance(cleaned.get("datasets"), list):
         cleaned["datasets"] = [normalise_manifest(item) for item in cleaned["datasets"]]
+    if isinstance(cleaned.get("output"), dict):
+        cleaned["output"] = {"format": cleaned["output"].get("format")}
     return cleaned
 
 

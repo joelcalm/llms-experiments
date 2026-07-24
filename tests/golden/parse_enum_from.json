@@ -90,98 +90,140 @@
         {
           "id": "single_label_json",
           "max_tokens": 32,
+          "processor": {
+            "result": "single_label",
+            "stages": [
+              {
+                "type": "json_decode"
+              },
+              {
+                "enum_from": "dataset_labels",
+                "schema": "experiment-cli/prompt/schema-single-label.json",
+                "type": "json_schema"
+              }
+            ]
+          },
           "prompts": [
             "experiment-cli/prompt/system.md",
             "experiment-cli/prompt/context.md",
             "experiment-cli/prompt/task-single-label.md",
             "experiment-cli/prompt/output-json.md",
             "experiment-cli/prompt/input.md"
-          ],
-          "request_mode": "generate",
-          "result_type": "single_label",
-          "validation": {
-            "enum_from": "dataset_labels",
-            "schema": "experiment-cli/prompt/schema-single-label.json"
-          }
+          ]
         },
         {
           "id": "multi_label_json",
           "max_tokens": 48,
+          "processor": {
+            "result": "multi_label",
+            "stages": [
+              {
+                "type": "json_decode"
+              },
+              {
+                "enum_from": "dataset_labels",
+                "schema": "experiment-cli/prompt/schema-multi-label.json",
+                "type": "json_schema"
+              }
+            ]
+          },
           "prompts": [
             "experiment-cli/prompt/system.md",
             "experiment-cli/prompt/context.md",
             "experiment-cli/prompt/task-multi-label.md",
             "experiment-cli/prompt/output-json.md",
             "experiment-cli/prompt/input.md"
-          ],
-          "request_mode": "generate",
-          "result_type": "multi_label",
-          "validation": {
-            "enum_from": "dataset_labels",
-            "schema": "experiment-cli/prompt/schema-multi-label.json"
-          }
+          ]
         },
         {
           "id": "ordinal_score_json",
           "max_tokens": 32,
+          "processor": {
+            "result": "ordinal_score",
+            "stages": [
+              {
+                "type": "json_decode"
+              },
+              {
+                "schema": "experiment-cli/prompt/schema-ordinal-score.json",
+                "type": "json_schema"
+              }
+            ]
+          },
           "prompts": [
             "experiment-cli/prompt/system.md",
             "experiment-cli/prompt/context.md",
             "experiment-cli/prompt/task-ordinal-score.md",
             "experiment-cli/prompt/output-json.md",
             "experiment-cli/prompt/input.md"
-          ],
-          "request_mode": "generate",
-          "result_type": "ordinal_score",
-          "validation": {
-            "schema": "experiment-cli/prompt/schema-ordinal-score.json"
-          }
+          ]
         },
         {
-          "candidates_from": "code_labels",
           "id": "single_label_code_logits",
+          "processor": {
+            "result": "categorical_logprobs",
+            "stages": [
+              {
+                "candidates_from": "code_labels",
+                "type": "candidate_logprobs"
+              }
+            ]
+          },
           "prompts": [
             "experiment-cli/prompt/system.md",
             "experiment-cli/prompt/context.md",
             "experiment-cli/prompt/task-single-label-code.md",
             "experiment-cli/prompt/candidate-answer.md",
             "experiment-cli/prompt/input.md"
-          ],
-          "request_mode": "candidate_logprobs",
-          "result_type": "categorical_logprobs"
+          ]
         },
         {
-          "candidates": [
-            "yes",
-            "no"
-          ],
           "id": "independent_yes_no_logits",
+          "processor": {
+            "result": "fixed_binary_probe",
+            "stages": [
+              {
+                "candidates": [
+                  "yes",
+                  "no"
+                ],
+                "type": "candidate_logprobs"
+              }
+            ]
+          },
           "prompts": [
             "experiment-cli/prompt/system.md",
             "experiment-cli/prompt/context.md",
             "experiment-cli/prompt/task-yes-no.md",
             "experiment-cli/prompt/candidate-answer.md",
             "experiment-cli/prompt/input.md"
-          ],
-          "request_mode": "candidate_logprobs",
-          "result_type": "fixed_binary_probe"
+          ]
         },
         {
-          "candidates": [
-            "yes",
-            "no"
-          ],
-          "expand_over": "dataset_labels",
           "id": "soft_multi_label_yes_no_logits",
+          "processor": {
+            "result": "label_yes_no_logprobs",
+            "stages": [
+              {
+                "over": "dataset_labels",
+                "type": "fan_out"
+              },
+              {
+                "candidates": [
+                  "yes",
+                  "no"
+                ],
+                "type": "candidate_logprobs"
+              }
+            ]
+          },
           "prompts": [
             "experiment-cli/prompt/system.md",
             "experiment-cli/prompt/context.md",
             "experiment-cli/prompt/candidate-answer.md",
             "experiment-cli/prompt/input.md",
             "experiment-cli/prompt/task-yes-no-target.md"
-          ],
-          "request_mode": "candidate_logprobs",
-          "result_type": "label_yes_no_logprobs"
+          ]
         }
       ]
     },
@@ -193,6 +235,9 @@
       "name": "fake"
     },
     "model_id": "fake",
+    "output": {
+      "format": "parquet"
+    },
     "result_rows": 14,
     "resume_skipped_rows": 0,
     "retry_requests": 0,
@@ -223,7 +268,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "99931f61a4f518ec46639144b0cbae4d363978c115021d40e36025197b59c948",
+      "config_hash": "c54466ad29135fb318553476d180f29a43aaf604ff9b65d7b5a69535edbd7120",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",
@@ -234,14 +279,14 @@
       "input_text": null,
       "model_id": "fake",
       "parsed_output": "{\"labels\": [\"care\"]}",
-      "prompt_group_id": "6c683bd7f30c2595",
-      "prompt_hash": "65e9e8870ce3a16e9d418b0a179fc6814b7d012f869fa4a2bd9b3122dc775b5b",
+      "prompt_group_id": "d54746e42ef4cfa0",
+      "prompt_hash": "36827662a1e85e8e18b3d8bb09701382237692033e3e0969a92aae83d5a0b3cb",
       "raw_response": "{\"labels\": [\"care\"]}",
       "result_type": "multi_label",
       "run_id": "matrix_smoke__nested_json",
       "source_position": 0,
       "target_label": null,
-      "token_count": null,
+      "token_count": 5,
       "tool_version": "0.2.0",
       "validation_errors": [],
       "validation_status": "valid",
@@ -250,7 +295,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "99931f61a4f518ec46639144b0cbae4d363978c115021d40e36025197b59c948",
+      "config_hash": "c54466ad29135fb318553476d180f29a43aaf604ff9b65d7b5a69535edbd7120",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",
@@ -261,14 +306,14 @@
       "input_text": null,
       "model_id": "fake",
       "parsed_output": "{\"labels\": [\"care\"]}",
-      "prompt_group_id": "6c683bd7f30c2595",
-      "prompt_hash": "0039343516a2c8b9aee65c1d1fda8b29419a3df1080a602a47994f25b5e8f997",
+      "prompt_group_id": "d54746e42ef4cfa0",
+      "prompt_hash": "5d5724c6e9507316252f99d616adc94c85d83c476736bcf22e8b8c99b1d7ca91",
       "raw_response": "{\"labels\": [\"care\"]}",
       "result_type": "multi_label",
       "run_id": "matrix_smoke__nested_json",
       "source_position": 1,
       "target_label": null,
-      "token_count": null,
+      "token_count": 5,
       "tool_version": "0.2.0",
       "validation_errors": [],
       "validation_status": "valid",
@@ -277,7 +322,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "759a2c071f3e84fa92e56915ddd0831e2e55dc151123877026b022143abd4d1c",
+      "config_hash": "ca687c8b7ac9abb0618ab7d08df848ec02d78520098711ec6b6dc2d1b9ab192b",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",
@@ -288,14 +333,14 @@
       "input_text": null,
       "model_id": "fake",
       "parsed_output": "{\"label\": \"care\"}",
-      "prompt_group_id": "732196997c9b4ee5",
-      "prompt_hash": "0f6ae9061c1f2563a6e310f3dc31d250df0422d591c18449aaeec6a8f1ce98fc",
+      "prompt_group_id": "667845a72586d8ec",
+      "prompt_hash": "ced469f4fa81e1b807f37fac423f68b641a6d9b11ce7ecb7cc430a9062c26341",
       "raw_response": "{\"label\": \"care\"}",
       "result_type": "single_label",
       "run_id": "matrix_smoke__nested_json",
       "source_position": 0,
       "target_label": null,
-      "token_count": null,
+      "token_count": 5,
       "tool_version": "0.2.0",
       "validation_errors": [],
       "validation_status": "valid",
@@ -304,7 +349,7 @@
     {
       "attempt_count": 1,
       "candidate_scores": null,
-      "config_hash": "759a2c071f3e84fa92e56915ddd0831e2e55dc151123877026b022143abd4d1c",
+      "config_hash": "ca687c8b7ac9abb0618ab7d08df848ec02d78520098711ec6b6dc2d1b9ab192b",
       "contract_version": "2.0",
       "dataset_id": "nested_json",
       "final_status": "completed",
@@ -315,14 +360,14 @@
       "input_text": null,
       "model_id": "fake",
       "parsed_output": "{\"label\": \"care\"}",
-      "prompt_group_id": "732196997c9b4ee5",
-      "prompt_hash": "7a2652215a21c9faa192b5e9484fedadc4c0702d9fe829a5484f6f5c246a3a21",
+      "prompt_group_id": "667845a72586d8ec",
+      "prompt_hash": "cefde076c19c99dee9ceba10d01c1c62bd3d66e4275bda1ba9ff107efa410e72",
       "raw_response": "{\"label\": \"care\"}",
       "result_type": "single_label",
       "run_id": "matrix_smoke__nested_json",
       "source_position": 1,
       "target_label": null,
-      "token_count": null,
+      "token_count": 5,
       "tool_version": "0.2.0",
       "validation_errors": [],
       "validation_status": "valid",

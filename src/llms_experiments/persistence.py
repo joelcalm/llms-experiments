@@ -1,5 +1,27 @@
-"""Atomic Parquet publication and SQLite resume state."""
+"""Compatibility facade for interchangeable durable output stores."""
 
-from ._core import RESULT_SCHEMA, PartWriter, ResumeIndex, merge_parts
+from .outputs import (
+    RESULT_SCHEMA,
+    AtomicPartWriter,
+    CsvOutputStore,
+    JsonLinesOutputStore,
+    OutputStore,
+    ParquetOutputStore,
+    PartWriter,
+    ResumeIndex,
+    create_output_store,
+    merge_parts,
+)
 
-__all__ = ["RESULT_SCHEMA", "PartWriter", "ResumeIndex", "merge_parts"]
+__all__ = [
+    "RESULT_SCHEMA",
+    "AtomicPartWriter",
+    "CsvOutputStore",
+    "JsonLinesOutputStore",
+    "OutputStore",
+    "ParquetOutputStore",
+    "PartWriter",
+    "ResumeIndex",
+    "create_output_store",
+    "merge_parts",
+]

@@ -8,20 +8,16 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from ._core import (
-    apply_resource_guard,
-    batch_command,
+from .config import load_config
+from .configuration import (
     dataset_config,
-    gpu,
-    parse_batch,
-    prepare,
     resolve,
-    run,
-    run_matrix,
     select_dataset,
     selected_entries,
 )
-from .config import load_config
+from .external_batch import batch_command, parse_batch, prepare
+from .runner import run, run_matrix
+from .runtime import apply_resource_guard, gpu
 
 
 def _common(command: argparse.ArgumentParser) -> None:
@@ -29,8 +25,9 @@ def _common(command: argparse.ArgumentParser) -> None:
     command.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
     command.add_argument("--run-id")
     command.add_argument("--model")
-    command.add_argument("--backend", choices=["vllm", "openai-compatible", "fake"])
+    command.add_argument("--backend", choices=["vllm", "openai-compatible", "llama-cpp", "fake"])
     command.add_argument("--output")
+    command.add_argument("--output-format", choices=["parquet", "csv", "jsonl"])
     command.add_argument("--dataset")
     command.add_argument("--datasets", help="Comma-separated dataset IDs")
     command.add_argument("--variants", help="Comma-separated variant IDs")
@@ -58,6 +55,7 @@ def _overrides(args: argparse.Namespace) -> list[str]:
         "run_id": "run.id",
         "model": "model.name",
         "output": "output.directory",
+        "output_format": "output.format",
         "backend": "model.backend",
     }
     backend_names = {

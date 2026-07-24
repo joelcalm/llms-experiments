@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import _core
+from . import configuration
 
 
 class ConfigSection(BaseModel):
@@ -37,15 +37,31 @@ class ModelConfig(ConfigSection):
     backend: Literal["local_vllm", "openai_compatible", "fake", "llama_cpp"]
 
 
+class ProcessingStageConfig(ConfigSection):
+    type: Literal[
+        "identity",
+        "fan_out",
+        "json_decode",
+        "json_schema",
+        "candidate_logprobs",
+        "verbalized_confidence",
+    ]
+
+
+class ProcessorConfig(ConfigSection):
+    result: str = Field(min_length=1)
+    stages: list[ProcessingStageConfig] = Field(min_length=1)
+
+
 class VariantConfig(ConfigSection):
     id: str = Field(min_length=1)
-    request_mode: Literal["generate", "generate_with_logprobs", "candidate_logprobs"]
     prompts: list[str] = Field(min_length=1)
-    result_type: str | None = None
+    processor: ProcessorConfig | None = None
 
 
 class OutputConfig(ConfigSection):
     directory: str
+    format: Literal["parquet", "csv", "jsonl"] | None = None
 
 
 class ExperimentConfig(ConfigSection):
@@ -75,7 +91,7 @@ class ExperimentConfig(ConfigSection):
 def load_config(path: str | Path, overrides: list[str] | None = None, *, check_files: bool = True) -> dict[str, Any]:
     """Load legacy-compatible YAML, then enforce the typed v0.2 shape."""
 
-    config = _core.load_config(path, overrides, check_files=check_files)
+    config = configuration.load_config(path, overrides, check_files=check_files)
     ExperimentConfig.model_validate(config)
     return config
 
@@ -86,10 +102,10 @@ def configuration_schema() -> dict[str, Any]:
     return ExperimentConfig.model_json_schema()
 
 
-config_overrides = _core.config_overrides
-dataset_config = _core.dataset_config
-select_dataset = _core.select_dataset
-validate_config = _core.validate_config
+config_overrides = configuration.config_overrides
+dataset_config = configuration.dataset_config
+select_dataset = configuration.select_dataset
+validate_config = configuration.validate_config
 
 __all__ = [
     "DatasetConfig",
@@ -97,6 +113,8 @@ __all__ = [
     "InputConfig",
     "ModelConfig",
     "OutputConfig",
+    "ProcessingStageConfig",
+    "ProcessorConfig",
     "RunConfig",
     "VariantConfig",
     "config_overrides",

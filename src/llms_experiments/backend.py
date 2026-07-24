@@ -1,12 +1,23 @@
-"""In-process, endpoint, external-batch, and deterministic test backends."""
+"""Compatibility facade for the backend package."""
 
-from ._core import Backend, FakeBackend, OpenAICompatibleBackend, Response, VLLMBackend, make_backend
+from .backends import (
+    Backend,
+    FakeBackend,
+    LlamaCppBackend,
+    OpenAICompatibleBackend,
+    Response,
+    VLLMBackend,
+    create_backend,
+    make_backend,
+)
 
 __all__ = [
     "Backend",
     "FakeBackend",
+    "LlamaCppBackend",
     "OpenAICompatibleBackend",
     "Response",
     "VLLMBackend",
+    "create_backend",
     "make_backend",
 ]

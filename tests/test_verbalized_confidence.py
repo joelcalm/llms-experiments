@@ -89,10 +89,19 @@ def test_request_includes_schema_and_generation_logprobs(tmp_path: Path) -> None
     lane = cli.select_dataset(config, "nested_json")
     variant = {
         "id": "verbalized_confidence",
-        "result_type": "single_label_verbalized_confidence",
-        "request_mode": "generate_with_logprobs",
+        "processor": {
+            "result": "single_label_verbalized_confidence",
+            "stages": [
+                {"type": "json_decode"},
+                {
+                    "type": "json_schema",
+                    "schema": "experiment-cli/prompt/schema-verbalized-confidence.json",
+                    "enum_from": "dataset_labels",
+                },
+                {"type": "verbalized_confidence", "top_logprobs": 20},
+            ],
+        },
         "max_tokens": 64,
-        "top_logprobs": 20,
         "prompts": [
             "experiment-cli/prompt/system.md",
             "experiment-cli/prompt/context.md",
@@ -100,10 +109,6 @@ def test_request_includes_schema_and_generation_logprobs(tmp_path: Path) -> None
             "experiment-cli/prompt/output-json.md",
             "experiment-cli/prompt/input.md",
         ],
-        "validation": {
-            "schema": "experiment-cli/prompt/schema-verbalized-confidence.json",
-            "enum_from": "dataset_labels",
-        },
     }
     schema = cli.variant_schema(lane, variant)
     row = cli.rows_for_source(lane, lane["input"], 1)[0]
@@ -125,10 +130,19 @@ def test_fake_backend_writes_both_confidences_to_parquet(tmp_path: Path) -> None
     lane["variants"] = [
         {
             "id": "verbalized_confidence",
-            "result_type": "single_label_verbalized_confidence",
-            "request_mode": "generate_with_logprobs",
+            "processor": {
+                "result": "single_label_verbalized_confidence",
+                "stages": [
+                    {"type": "json_decode"},
+                    {
+                        "type": "json_schema",
+                        "schema": "experiment-cli/prompt/schema-verbalized-confidence.json",
+                        "enum_from": "dataset_labels",
+                    },
+                    {"type": "verbalized_confidence", "top_logprobs": 20},
+                ],
+            },
             "max_tokens": 64,
-            "top_logprobs": 20,
             "fake_response": {"label": "care", "confidence_tens": 7, "confidence_units": 5},
             "prompts": [
                 "experiment-cli/prompt/system.md",
@@ -137,10 +151,6 @@ def test_fake_backend_writes_both_confidences_to_parquet(tmp_path: Path) -> None
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md",
             ],
-            "validation": {
-                "schema": "experiment-cli/prompt/schema-verbalized-confidence.json",
-                "enum_from": "dataset_labels",
-            },
         }
     ]
 

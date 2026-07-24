@@ -11,20 +11,24 @@ model:
 
 variants:
   - id: "single_label_json"
-    request_mode: "generate"
-    result_type: "single_label"
+    processor:
+      result: "single_label"
+      stages:
+        - type: "json_decode"
+        - type: "json_schema"
+          schema: "experiment-cli/prompt/schema-single-label.json"
+          enum_from: "dataset_labels"
     prompts:
       - "experiment-cli/prompt/system.md"
       - "experiment-cli/prompt/task-single-label.md"
       - "experiment-cli/prompt/input.md"
-    validation:
-      schema: "experiment-cli/prompt/schema-single-label.json"
-      enum_from: "dataset_labels"
 
   - id: "independent_yes_no_logits"
-    request_mode: "candidate_logprobs"
-    result_type: "fixed_binary_probe"
-    candidates: ["yes", "no"]
+    processor:
+      result: "fixed_binary_probe"
+      stages:
+        - type: "candidate_logprobs"
+          candidates: ["yes", "no"]
     prompts:
       - "experiment-cli/prompt/system.md"
       - "experiment-cli/prompt/task-yes-no.md"

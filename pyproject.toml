@@ -5,9 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "llms-experiments"
 version = "0.2.0"
-description = "Configuration-driven LLM inference with durable Parquet outputs"
+description = "Modular configuration-driven LLM inference with durable Parquet, CSV, and JSONL outputs"
 readme = "README.md"
-license = "MIT"
+license = { file = "LICENSE" }
+authors = [{name = "Antonio Lobo-Santos"}]
 requires-python = ">=3.11"
 # Everything needed to validate, prepare, parse and test. No CUDA wheels.
 dependencies = [

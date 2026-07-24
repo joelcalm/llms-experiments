@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
-from llms_experiments._core import LlamaCppBackend, make_backend
+
+from llms_experiments.backends import LlamaCppBackend, make_backend
+from llms_experiments.processors import GenerationRequest, ResponseRequirements, create_processor
 
 
 class DummyLlama:
@@ -55,7 +58,9 @@ class DummyLlama:
             return {
                 "choices": [
                     {
-                        "message": {"content": json.dumps({"label": "care", "confidence_tens": 8, "confidence_units": 5})},
+                        "message": {
+                            "content": json.dumps({"label": "care", "confidence_tens": 8, "confidence_units": 5})
+                        },
                         "logprobs": {
                             "content": [
                                 {
@@ -120,51 +125,39 @@ def mock_llama_backend(monkeypatch: pytest.MonkeyPatch) -> LlamaCppBackend:
 
 
 def test_strategy_1_single_label_json(mock_llama_backend: LlamaCppBackend) -> None:
-    variant = {
-        "id": "single_label_var",
-        "request_mode": "generate",
-        "result_type": "single_label",
-        "_schema": {
-            "type": "object",
-            "properties": {"label": {"type": "string", "enum": ["care", "fairness", "loyalty"]}},
-            "required": ["label"],
-        },
+    schema = {
+        "type": "object",
+        "properties": {"label": {"type": "string", "enum": ["care", "fairness", "loyalty"]}},
+        "required": ["label"],
     }
-    responses = mock_llama_backend.generate(["Classify this input."], variant)
+    request = GenerationRequest("single_label_var", ResponseRequirements(structured_schema=schema))
+    responses = mock_llama_backend.generate(["Classify this input."], request)
     assert len(responses) == 1
     assert responses[0].backend_error is None
     assert json.loads(responses[0].raw) == {"label": "fairness"}
 
 
 def test_strategy_2_multi_label_json(mock_llama_backend: LlamaCppBackend) -> None:
-    variant = {
-        "id": "multi_label_var",
-        "request_mode": "generate",
-        "result_type": "multi_label",
-        "_schema": {
-            "type": "object",
-            "properties": {"labels": {"type": "array", "items": {"type": "string"}}},
-            "required": ["labels"],
-        },
+    schema = {
+        "type": "object",
+        "properties": {"labels": {"type": "array", "items": {"type": "string"}}},
+        "required": ["labels"],
     }
-    responses = mock_llama_backend.generate(["Classify all applicable labels."], variant)
+    request = GenerationRequest("multi_label_var", ResponseRequirements(structured_schema=schema))
+    responses = mock_llama_backend.generate(["Classify all applicable labels."], request)
     assert len(responses) == 1
     assert responses[0].backend_error is None
     assert json.loads(responses[0].raw) == {"labels": ["care", "purity"]}
 
 
 def test_strategy_3_ordinal_score_json(mock_llama_backend: LlamaCppBackend) -> None:
-    variant = {
-        "id": "ordinal_score_var",
-        "request_mode": "generate",
-        "result_type": "ordinal_score",
-        "_schema": {
-            "type": "object",
-            "properties": {"score": {"type": "integer", "minimum": 1, "maximum": 5}},
-            "required": ["score"],
-        },
+    schema = {
+        "type": "object",
+        "properties": {"score": {"type": "integer", "minimum": 1, "maximum": 5}},
+        "required": ["score"],
     }
-    responses = mock_llama_backend.generate(["Rate intensity from 1 to 5."], variant)
+    request = GenerationRequest("ordinal_score_var", ResponseRequirements(structured_schema=schema))
+    responses = mock_llama_backend.generate(["Rate intensity from 1 to 5."], request)
     assert len(responses) == 1
     assert responses[0].backend_error is None
     assert json.loads(responses[0].raw) == {"score": 4}
@@ -173,51 +166,69 @@ def test_strategy_3_ordinal_score_json(mock_llama_backend: LlamaCppBackend) -> N
 def test_strategy_4_single_label_code_logits(mock_llama_backend: LlamaCppBackend) -> None:
     variant = {
         "id": "code_logits_var",
-        "request_mode": "candidate_logprobs",
-        "result_type": "categorical_logprobs",
-        "candidates": ["A", "B", "C"],
+        "processor": {
+            "result": "categorical_logprobs",
+            "stages": [{"type": "candidate_logprobs", "candidates": ["A", "B", "C"]}],
+        },
     }
-    responses = mock_llama_backend.generate(["Select code A, B, or C."], variant)
+    processor = create_processor(variant, root=Path.cwd())
+    request = GenerationRequest(variant["id"], processor.requirements)
+    responses = mock_llama_backend.generate(["Select code A, B, or C."], request)
     assert len(responses) == 1
     assert responses[0].backend_error is None
-    assert responses[0].candidate_logprobs == {"A": -0.25, "B": -2.10, "C": -6.50}
+    processed = processor.process(responses[0], {"_source_position": 0})
+    assert processed.candidate_scores == {"A": -0.25, "B": -2.10, "C": -6.50}
 
 
 def test_strategy_5_independent_yes_no_logits(mock_llama_backend: LlamaCppBackend) -> None:
     variant = {
         "id": "yes_no_logits_var",
-        "request_mode": "candidate_logprobs",
-        "result_type": "fixed_binary_probe",
-        "candidates": ["yes", "no"],
+        "processor": {
+            "result": "fixed_binary_probe",
+            "stages": [{"type": "candidate_logprobs", "candidates": ["yes", "no"]}],
+        },
     }
-    responses = mock_llama_backend.generate(["Does this express care? (yes/no)"], variant)
+    processor = create_processor(variant, root=Path.cwd())
+    responses = mock_llama_backend.generate(
+        ["Does this express care? (yes/no)"],
+        GenerationRequest(variant["id"], processor.requirements),
+    )
     assert len(responses) == 1
     assert responses[0].backend_error is None
-    assert responses[0].candidate_logprobs == {"yes": -0.15, "no": -4.20}
+    processed = processor.process(responses[0], {"_source_position": 0})
+    assert processed.candidate_scores == {"yes": -0.15, "no": -4.20}
 
 
 def test_strategy_6_soft_multi_label_yes_no_logits(mock_llama_backend: LlamaCppBackend) -> None:
     variant = {
         "id": "soft_multi_label_var",
-        "request_mode": "candidate_logprobs",
-        "result_type": "label_yes_no_logprobs",
-        "candidates": ["yes", "no"],
-        "expand_over": "dataset_labels",
+        "processor": {
+            "result": "label_yes_no_logprobs",
+            "stages": [
+                {"type": "fan_out", "over": "dataset_labels"},
+                {"type": "candidate_logprobs", "candidates": ["yes", "no"]},
+            ],
+        },
     }
-    responses = mock_llama_backend.generate(["Does this text express care?"], variant)
+    processor = create_processor(variant, root=Path.cwd(), dataset_labels=["care"])
+    responses = mock_llama_backend.generate(
+        ["Does this text express care?"],
+        GenerationRequest(variant["id"], processor.requirements),
+    )
     assert len(responses) == 1
     assert responses[0].backend_error is None
-    assert responses[0].candidate_logprobs == {"yes": -0.15, "no": -4.20}
+    row = next(processor.prepare_rows([{"_source_position": 0}]))
+    processed = processor.process(responses[0], row)
+    assert processed.candidate_scores == {"yes": -0.15, "no": -4.20}
+    assert processed.target_label == "care"
 
 
 def test_strategy_7_verbalized_confidence(mock_llama_backend: LlamaCppBackend) -> None:
-    variant = {
-        "id": "verbalized_confidence_var",
-        "request_mode": "generate_with_logprobs",
-        "result_type": "single_label_verbalized_confidence",
-        "top_logprobs": 20,
-    }
-    responses = mock_llama_backend.generate(["Classify and state confidence."], variant)
+    request = GenerationRequest(
+        "verbalized_confidence_var",
+        ResponseRequirements(capture_logprobs=True, top_logprobs=20),
+    )
+    responses = mock_llama_backend.generate(["Classify and state confidence."], request)
     assert len(responses) == 1
     assert responses[0].backend_error is None
     parsed = json.loads(responses[0].raw)

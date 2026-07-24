@@ -1,5 +1,5 @@
-"""Bounded input readers for supported dataset formats."""
+"""Compatibility facade for pluggable input readers."""
 
-from ._core import iter_rows_for_source, read_rows
+from .inputs import InputReader, create_input_reader, iter_rows_for_source, read_rows, rows_for_source
 
-__all__ = ["iter_rows_for_source", "read_rows"]
+__all__ = ["InputReader", "create_input_reader", "iter_rows_for_source", "read_rows", "rows_for_source"]

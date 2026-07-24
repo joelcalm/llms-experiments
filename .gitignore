@@ -120,5 +120,8 @@ temp_*
 !tests/**
 !experiment-cli/data/*.parquet
 !experiment-cli/data/*.jsonl
+!src/llms_experiments/outputs/
+!src/llms_experiments/outputs/**
 # ...but the negations above also re-include the compiled cache; keep it out.
 tests/**/__pycache__/
+src/llms_experiments/outputs/**/__pycache__/

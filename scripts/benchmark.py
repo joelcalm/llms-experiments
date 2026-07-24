@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from llms_experiments._core import benchmark
+from llms_experiments.benchmarking import benchmark
 from llms_experiments.config import load_config
 
 

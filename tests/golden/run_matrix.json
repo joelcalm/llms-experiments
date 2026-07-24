@@ -6,14 +6,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "e533403c8d1d0bfbd8dd7ab7f0c2235bd9d6c77a865fbda0cc4e4aa7c24de482",
+        "config_hash": "69ce2c35fa49702506a81cedbc235aeb612580720d8db78622bc5ed29c054d85",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -23,9 +23,9 @@
         "input_row_id": "csv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "9f444b12cf8f4cccfdfb878242bf1fe95da995cfa0de978a7020f29d8f2cc6e9",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "528c139b8918aa286dc669173294fa0ced64916dae0b3c5cd1f350dfe88da3d2",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__filtered_csv",
@@ -42,14 +42,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "e533403c8d1d0bfbd8dd7ab7f0c2235bd9d6c77a865fbda0cc4e4aa7c24de482",
+        "config_hash": "69ce2c35fa49702506a81cedbc235aeb612580720d8db78622bc5ed29c054d85",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -59,9 +59,9 @@
         "input_row_id": "csv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "9b1af8ffe8866a68e86505d68cd9cffd8c0073ae99925af298f97892b9889a48",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "5acda316fb8fac5ec6fd92963baf83e067075d0fc899245e7778bd170b1d8422",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__filtered_csv",
@@ -76,7 +76,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "eae0670e88b5d59bd4f6ae2afc902fa5c0851b4b80ff2848818f29ff17949f60",
+        "config_hash": "1700870173af6192115a35b6e2ddb0e6e4a86afb2eb61426a71755726d3182aa",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -87,8 +87,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "65e9e8870ce3a16e9d418b0a179fc6814b7d012f869fa4a2bd9b3122dc775b5b",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "36827662a1e85e8e18b3d8bb09701382237692033e3e0969a92aae83d5a0b3cb",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__filtered_csv",
@@ -97,8 +97,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -106,7 +105,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "eae0670e88b5d59bd4f6ae2afc902fa5c0851b4b80ff2848818f29ff17949f60",
+        "config_hash": "1700870173af6192115a35b6e2ddb0e6e4a86afb2eb61426a71755726d3182aa",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -117,8 +116,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "8b80eeffe2e7c6c69c8c400394d7ddde7186bf08cd3aeb04b8856989221ce6ce",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "84f437a404ccdcc4109a07123d099623406a77c403d968b0a15c44d32f4368b9",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__filtered_csv",
@@ -127,8 +126,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -136,7 +134,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "ea951c0467b0c743dd4270586f7526dfbcacd2febfd232065528ad5980158b45",
+        "config_hash": "2deaf1e3fe7c4f488285e7f960f0e72c37d978786804bfb70b823d8530f8692e",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -147,8 +145,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "048419b043e1992ded3e88de3098a6d9167e44979a904c14ceb5dfe0ceaec13d",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "7a98f60bc6a18fd927261d2903c527ee72a4dbbd7203fe78d376972876cbf9dd",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__filtered_csv",
@@ -157,8 +155,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -166,7 +163,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "ea951c0467b0c743dd4270586f7526dfbcacd2febfd232065528ad5980158b45",
+        "config_hash": "2deaf1e3fe7c4f488285e7f960f0e72c37d978786804bfb70b823d8530f8692e",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -177,8 +174,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "f5cde6cd435d95485a163048f9fb80e5dd528e41f94636978e1a5721adb8f22e",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "574fddd5ee0b189431bc97258efb6ddb8065c875625dfa85264f7f86b67746d7",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__filtered_csv",
@@ -187,8 +184,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -198,14 +194,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "35492574f61cef32d51ffd12cc9cbdfd7c331cfacb18768595275a6548133138",
+        "config_hash": "bf06caf38249051c32741439a9c8214df2f4b6113f3b5813380573cfec8e8207",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -215,9 +211,9 @@
         "input_row_id": "csv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "78ecb6618023720261b80247f20725a295130a4738d6397488cd054323c825c1",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "ff75e9930131871606f4be67f747b8a04e4a0248023d7c3deb21ab2370dc57d7",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__filtered_csv",
@@ -234,14 +230,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "35492574f61cef32d51ffd12cc9cbdfd7c331cfacb18768595275a6548133138",
+        "config_hash": "bf06caf38249051c32741439a9c8214df2f4b6113f3b5813380573cfec8e8207",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -251,9 +247,9 @@
         "input_row_id": "csv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "f57727fb95cef4794ce41afde3b4b30917b305875bc892848701eadff2dac7c6",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "a258798f670cfb5d4c9d467f592ba49b42b808eaa2976b50239a370364ca5b59",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__filtered_csv",
@@ -268,7 +264,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "6f8bdc3a476be8b3245962410bfaead6250ecbbcf94a846d222b57c709941e90",
+        "config_hash": "973a0b5b1faef5ca3457127942277d62ad50d552aa85e6a43659253a08f8f4fa",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -279,8 +275,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "0f6ae9061c1f2563a6e310f3dc31d250df0422d591c18449aaeec6a8f1ce98fc",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "ced469f4fa81e1b807f37fac423f68b641a6d9b11ce7ecb7cc430a9062c26341",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__filtered_csv",
@@ -289,7 +285,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -297,7 +293,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "6f8bdc3a476be8b3245962410bfaead6250ecbbcf94a846d222b57c709941e90",
+        "config_hash": "973a0b5b1faef5ca3457127942277d62ad50d552aa85e6a43659253a08f8f4fa",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "failed_validation",
@@ -308,8 +304,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "da69e435d1dc42c6fca7e8217198d0d2d3c6aef21915c8e63f3c356ee3d9e505",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "78bfefca5d306ebb6ef1f2fc35c9997b34f03b74b43c9a7e58c35e79c8bb8bf4",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__filtered_csv",
@@ -318,7 +314,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -328,14 +324,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
+        "config_hash": "ef7f98c8e480f2e10f744399f7a1ba6a45670a14ad2e2f10cfe9472202252eaf",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -345,9 +341,9 @@
         "input_row_id": "csv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "ebc3f65a94624cfafeb1ba0f535b35f02b483c1661eac0cd2678f07c7c82fab5",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "b0ed40e35466826a5b2a34cf1be8f87607e41b1d57a2c444b0ad628c688b8182",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__filtered_csv",
@@ -364,14 +360,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
+        "config_hash": "ef7f98c8e480f2e10f744399f7a1ba6a45670a14ad2e2f10cfe9472202252eaf",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -381,9 +377,9 @@
         "input_row_id": "csv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "488dbd70523a592aceee208d483cc5337d420be5bb670b952898ad2db7f6301d",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "575968df8df196a0e4cd0794f8169c8045465af44d5b50e48208720b969daea5",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__filtered_csv",
@@ -400,14 +396,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
+        "config_hash": "ef7f98c8e480f2e10f744399f7a1ba6a45670a14ad2e2f10cfe9472202252eaf",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -417,9 +413,9 @@
         "input_row_id": "csv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "a916ebe1dcbd96d93e83f76b5001944296781e12cb4e662fae36d325339daf0c",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "f93831f6f04728ced464b681d75ded6706d5ef47ab1e39a3e66f39b22ec42d75",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__filtered_csv",
@@ -436,14 +432,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "b5b2de18d8ed72b99b9392a6fae7e06c0b970300f3c7b8316efbc8d2e1cd348c",
+        "config_hash": "ef7f98c8e480f2e10f744399f7a1ba6a45670a14ad2e2f10cfe9472202252eaf",
         "contract_version": "2.0",
         "dataset_id": "filtered_csv",
         "final_status": "completed",
@@ -453,9 +449,9 @@
         "input_row_id": "csv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "8d811b82eaee5ebd153bb80aa78921d36d17acb8aaf9a33d772aeeb38190d346",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "d6495e85659edb34d8ca4dbd04e9efd774d3a1f9bb90e9f1886476abfee20644",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__filtered_csv",
@@ -474,14 +470,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "408fda5ff4b3150cfa7ada3d2d3615bcfca414cab4376dcfed44ed8d58e2df07",
+        "config_hash": "04bbbee435375fa0c407d47d0a955d49000a8c0cc9afb010101dd9ef008b709b",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -491,9 +487,9 @@
         "input_row_id": "jsonl-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "d5f359c60a33157f815e18f700d989d78c78b1c715303fc838673fb64565670e",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "80dde9e3885b1b1c99c5819bafe1c480a841bd0a5a990f75e212080be29171da",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__jsonl",
@@ -510,14 +506,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "408fda5ff4b3150cfa7ada3d2d3615bcfca414cab4376dcfed44ed8d58e2df07",
+        "config_hash": "04bbbee435375fa0c407d47d0a955d49000a8c0cc9afb010101dd9ef008b709b",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -527,9 +523,9 @@
         "input_row_id": "jsonl-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "9b1af8ffe8866a68e86505d68cd9cffd8c0073ae99925af298f97892b9889a48",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "5acda316fb8fac5ec6fd92963baf83e067075d0fc899245e7778bd170b1d8422",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__jsonl",
@@ -544,7 +540,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "19e25007a0ae110134ec7de79f3ec732a7fe0487c2e41cf9ecb175ee84fe3021",
+        "config_hash": "2a60e1a96880097b350a4a28ab57ead6b9a98d5c8b29b9593cb1ecd56eb2e48c",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -555,8 +551,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "be5c97c32ef633a5f7fc7e1252412283ce0d849540877d47080cd6ee57098a02",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "bf5668a95116e5f7cab5f8b3c7ac0b63ba493af4892676155da1e1673f1cc9ec",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__jsonl",
@@ -565,8 +561,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -574,7 +569,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "19e25007a0ae110134ec7de79f3ec732a7fe0487c2e41cf9ecb175ee84fe3021",
+        "config_hash": "2a60e1a96880097b350a4a28ab57ead6b9a98d5c8b29b9593cb1ecd56eb2e48c",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -585,8 +580,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "8b80eeffe2e7c6c69c8c400394d7ddde7186bf08cd3aeb04b8856989221ce6ce",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "84f437a404ccdcc4109a07123d099623406a77c403d968b0a15c44d32f4368b9",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__jsonl",
@@ -595,8 +590,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -604,7 +598,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "c8fa034c81ee65242967d699d6baea172fa70794c05f3c9d7644a7bee2abd207",
+        "config_hash": "995c45881ab8baeb163aca276fcbe2e9f50ef01d802196a8d982c44da0738d05",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -615,8 +609,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "200ef1fe5044a9694229ef9796e537c52e7b5a49a010a4e26e6b9ce36a4caf39",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "b53534af581db311a68e972fdd709f7a3c8349398b8d35c67ddedc6b8f954d39",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__jsonl",
@@ -625,8 +619,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -634,7 +627,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "c8fa034c81ee65242967d699d6baea172fa70794c05f3c9d7644a7bee2abd207",
+        "config_hash": "995c45881ab8baeb163aca276fcbe2e9f50ef01d802196a8d982c44da0738d05",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -645,8 +638,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "f5cde6cd435d95485a163048f9fb80e5dd528e41f94636978e1a5721adb8f22e",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "574fddd5ee0b189431bc97258efb6ddb8065c875625dfa85264f7f86b67746d7",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__jsonl",
@@ -655,8 +648,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -666,14 +658,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "9eac0038e04904308622e1a50419fd2ba3bc4607b365c0c18c39396a173416fc",
+        "config_hash": "73da7f3d6a0ba769841b18328caa89eebd3f9231bb81be46c8a60c36f6994a6d",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -683,9 +675,9 @@
         "input_row_id": "jsonl-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "0c80c95c17e79aa8a5240a4c86973ac20f7c586399dca3155e017a1d28f43c93",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "16d3cfb1902818db1dc20da081007bb8f9aad0d2fb6fafa27e63cfaec9ec2d76",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__jsonl",
@@ -702,14 +694,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "9eac0038e04904308622e1a50419fd2ba3bc4607b365c0c18c39396a173416fc",
+        "config_hash": "73da7f3d6a0ba769841b18328caa89eebd3f9231bb81be46c8a60c36f6994a6d",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -719,9 +711,9 @@
         "input_row_id": "jsonl-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "f57727fb95cef4794ce41afde3b4b30917b305875bc892848701eadff2dac7c6",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "a258798f670cfb5d4c9d467f592ba49b42b808eaa2976b50239a370364ca5b59",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__jsonl",
@@ -736,7 +728,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "c9ba6335fa738c51dffa479935275ebc55dbd223d9280fc4aa776bc057fbe21e",
+        "config_hash": "6ed5df86a24512d301048c44deac8dc744c3dbee5069c224ff65f35c1abb525a",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -747,8 +739,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "7b417b64c3c531e97cd731a635b96c3e085c0527b554e46d76c097e4e0bcddb6",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "afaa6d65fee5cf625efe34a6a425ea314b890f3a480e27cf5dd4670979a79704",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__jsonl",
@@ -757,7 +749,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -765,7 +757,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "c9ba6335fa738c51dffa479935275ebc55dbd223d9280fc4aa776bc057fbe21e",
+        "config_hash": "6ed5df86a24512d301048c44deac8dc744c3dbee5069c224ff65f35c1abb525a",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "failed_validation",
@@ -776,8 +768,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "da69e435d1dc42c6fca7e8217198d0d2d3c6aef21915c8e63f3c356ee3d9e505",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "78bfefca5d306ebb6ef1f2fc35c9997b34f03b74b43c9a7e58c35e79c8bb8bf4",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__jsonl",
@@ -786,7 +778,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -796,14 +788,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
+        "config_hash": "f67197db3044644f6cf2e709480efbca101f8678f19555c383269b340d1702ac",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -813,9 +805,9 @@
         "input_row_id": "jsonl-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "6ef6fe7cfb54d20374a162cc4ab57718d5190f3783c2b31d747b1d84efaa243a",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "5497b239b3077112143b413741f43dc93dbacd2ba8d0f523007c94d9107a8831",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__jsonl",
@@ -832,14 +824,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
+        "config_hash": "f67197db3044644f6cf2e709480efbca101f8678f19555c383269b340d1702ac",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -849,9 +841,9 @@
         "input_row_id": "jsonl-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "2603cf7ec39988d1d5776c1d619496f902d736610ebc3f76606d2276fe8fd116",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "ed2b4f2b0d82ca368fe9767b1534b3bee6bf08abed32be7cb5aeac82881e01c1",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__jsonl",
@@ -868,14 +860,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
+        "config_hash": "f67197db3044644f6cf2e709480efbca101f8678f19555c383269b340d1702ac",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -885,9 +877,9 @@
         "input_row_id": "jsonl-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "a916ebe1dcbd96d93e83f76b5001944296781e12cb4e662fae36d325339daf0c",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "f93831f6f04728ced464b681d75ded6706d5ef47ab1e39a3e66f39b22ec42d75",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__jsonl",
@@ -904,14 +896,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "084c03f7c3a2df03a20ab81c6ea5fccfd381487d2bbd50fab78d3eac82b0e19e",
+        "config_hash": "f67197db3044644f6cf2e709480efbca101f8678f19555c383269b340d1702ac",
         "contract_version": "2.0",
         "dataset_id": "jsonl",
         "final_status": "completed",
@@ -921,9 +913,9 @@
         "input_row_id": "jsonl-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "8d811b82eaee5ebd153bb80aa78921d36d17acb8aaf9a33d772aeeb38190d346",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "d6495e85659edb34d8ca4dbd04e9efd774d3a1f9bb90e9f1886476abfee20644",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__jsonl",
@@ -942,14 +934,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "c039990356e230c2626309774e573bf363215269d60e1d1886a127b9a22edf53",
+        "config_hash": "bbcb8562c04a8c131ed661f2f0d1883c7421beb3119cd364a01f3b1e161f48e4",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -959,9 +951,9 @@
         "input_row_id": "nested-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "9f444b12cf8f4cccfdfb878242bf1fe95da995cfa0de978a7020f29d8f2cc6e9",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "528c139b8918aa286dc669173294fa0ced64916dae0b3c5cd1f350dfe88da3d2",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__nested_json",
@@ -978,14 +970,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "c039990356e230c2626309774e573bf363215269d60e1d1886a127b9a22edf53",
+        "config_hash": "bbcb8562c04a8c131ed661f2f0d1883c7421beb3119cd364a01f3b1e161f48e4",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -995,9 +987,9 @@
         "input_row_id": "nested-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "06d350a3c64f8cc77eb8b9aa8ce46ab35845a0abdafad274db02e48ae038a1b5",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "06613f88086784674175529f8eba0beacd01bf67d426bb01a6d3474b03705708",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__nested_json",
@@ -1012,7 +1004,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "bc53daa1923357acf7129f2035001030c160e67a6a1213c7aae10d624e44ad3e",
+        "config_hash": "f322f9bb9c622872559bc28ffdd457d24962ffc8f704c69788f421a30d1e35e2",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1023,8 +1015,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "65e9e8870ce3a16e9d418b0a179fc6814b7d012f869fa4a2bd9b3122dc775b5b",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "36827662a1e85e8e18b3d8bb09701382237692033e3e0969a92aae83d5a0b3cb",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__nested_json",
@@ -1033,8 +1025,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -1042,7 +1033,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "bc53daa1923357acf7129f2035001030c160e67a6a1213c7aae10d624e44ad3e",
+        "config_hash": "f322f9bb9c622872559bc28ffdd457d24962ffc8f704c69788f421a30d1e35e2",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1053,8 +1044,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "0039343516a2c8b9aee65c1d1fda8b29419a3df1080a602a47994f25b5e8f997",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "5d5724c6e9507316252f99d616adc94c85d83c476736bcf22e8b8c99b1d7ca91",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__nested_json",
@@ -1063,8 +1054,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -1072,7 +1062,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "38f392022c42c5523c5fcd5bd6084f39484cb3672d0f478070926e7d5f120986",
+        "config_hash": "9c2c4ff9e7ddced291a728907cb09bf5685bfebecf9d83321c51ac17dad72aa8",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1083,8 +1073,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "048419b043e1992ded3e88de3098a6d9167e44979a904c14ceb5dfe0ceaec13d",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "7a98f60bc6a18fd927261d2903c527ee72a4dbbd7203fe78d376972876cbf9dd",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__nested_json",
@@ -1093,8 +1083,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -1102,7 +1091,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "38f392022c42c5523c5fcd5bd6084f39484cb3672d0f478070926e7d5f120986",
+        "config_hash": "9c2c4ff9e7ddced291a728907cb09bf5685bfebecf9d83321c51ac17dad72aa8",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1113,8 +1102,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "ec8421f9396f1c310e9ad742161dc84407426d55b5a2ceb395aae159e89fde95",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "95eebd48a3a406f6bffcbc265670b994c82e6be23e2dfb29902e8910f4463152",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__nested_json",
@@ -1123,8 +1112,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -1134,14 +1122,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "87c1f7fae11aa9ee76e09bfd568570b4cc50e029c962727442c0bc5aad25aa59",
+        "config_hash": "f28b161dc40d2b3ed5bf202755b2244aea8a0e9f05a63e9a2893809120343fc1",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1151,9 +1139,9 @@
         "input_row_id": "nested-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "78ecb6618023720261b80247f20725a295130a4738d6397488cd054323c825c1",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "ff75e9930131871606f4be67f747b8a04e4a0248023d7c3deb21ab2370dc57d7",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__nested_json",
@@ -1170,14 +1158,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "87c1f7fae11aa9ee76e09bfd568570b4cc50e029c962727442c0bc5aad25aa59",
+        "config_hash": "f28b161dc40d2b3ed5bf202755b2244aea8a0e9f05a63e9a2893809120343fc1",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1187,9 +1175,9 @@
         "input_row_id": "nested-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "4a4ba2b52d7fabc3409f74fc4f9fdee2d1cd95f0ab2d4402f1dc539e669a3a27",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "6677327e04bf19781a578641f225fc21c0cff7cefa846b9e960edb16fcbc12fc",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__nested_json",
@@ -1204,7 +1192,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "cb6446dc8df0381ee97519b8927ef07fb7833fe8a1085759c98f2a43cd5d326c",
+        "config_hash": "8bd92d489f281a68c03d035be854fe37a9cac1f6288cae7f5324852f0e51e14a",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1215,8 +1203,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "0f6ae9061c1f2563a6e310f3dc31d250df0422d591c18449aaeec6a8f1ce98fc",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "ced469f4fa81e1b807f37fac423f68b641a6d9b11ce7ecb7cc430a9062c26341",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__nested_json",
@@ -1225,7 +1213,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -1233,7 +1221,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "cb6446dc8df0381ee97519b8927ef07fb7833fe8a1085759c98f2a43cd5d326c",
+        "config_hash": "8bd92d489f281a68c03d035be854fe37a9cac1f6288cae7f5324852f0e51e14a",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "failed_validation",
@@ -1244,8 +1232,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "7a2652215a21c9faa192b5e9484fedadc4c0702d9fe829a5484f6f5c246a3a21",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "cefde076c19c99dee9ceba10d01c1c62bd3d66e4275bda1ba9ff107efa410e72",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__nested_json",
@@ -1254,7 +1242,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -1264,14 +1252,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
+        "config_hash": "e5294920a29867be211b90fe0e0aaf60ff5a2340861e46df0f161aee77ec6f1e",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1281,9 +1269,9 @@
         "input_row_id": "nested-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "ebc3f65a94624cfafeb1ba0f535b35f02b483c1661eac0cd2678f07c7c82fab5",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "b0ed40e35466826a5b2a34cf1be8f87607e41b1d57a2c444b0ad628c688b8182",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__nested_json",
@@ -1300,14 +1288,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
+        "config_hash": "e5294920a29867be211b90fe0e0aaf60ff5a2340861e46df0f161aee77ec6f1e",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1317,9 +1305,9 @@
         "input_row_id": "nested-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "488dbd70523a592aceee208d483cc5337d420be5bb670b952898ad2db7f6301d",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "575968df8df196a0e4cd0794f8169c8045465af44d5b50e48208720b969daea5",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__nested_json",
@@ -1336,14 +1324,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
+        "config_hash": "e5294920a29867be211b90fe0e0aaf60ff5a2340861e46df0f161aee77ec6f1e",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1353,9 +1341,9 @@
         "input_row_id": "nested-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "549886e8fd2c9f4ce29757864a4bf8ed5611babc4ad6d9b6a4700d58c2c6694d",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "0ae0cd4b41187389093f528017cc8b54bbfca24fe683f926e377586d227d42cb",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__nested_json",
@@ -1372,14 +1360,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "6da5785e454fd25b3b44cbd93a25a0235f7ed6322e9166c14d7bc223c5056460",
+        "config_hash": "e5294920a29867be211b90fe0e0aaf60ff5a2340861e46df0f161aee77ec6f1e",
         "contract_version": "2.0",
         "dataset_id": "nested_json",
         "final_status": "completed",
@@ -1389,9 +1377,9 @@
         "input_row_id": "nested-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "d30296fde04de213c334a5a636be1e0ed2c73fdbb60710987f1b566dd8e02282",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "3920e99c9cfe42d7dab83f216cd5631e7844eab9c23697922b01c68939d6cd8b",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__nested_json",
@@ -1410,14 +1398,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "b428c6ce3da4df9a4ae2b19d4c3834b636d075b6e95b7f90b4e004c240870874",
+        "config_hash": "c846cb0c2621a625631fdcc30db4aff1702b871e20a93c74c904d3d5db0af496",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1427,9 +1415,9 @@
         "input_row_id": "tsv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "a77cc9d7db62189187eb1705fea2d5487b1ebdd82035d17cb00cad517e9ef20b",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "42c1036225f6d8bbc41f64956cd287689e2c0e9889d61426c1da0e55bbd6ca37",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1446,14 +1434,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "b428c6ce3da4df9a4ae2b19d4c3834b636d075b6e95b7f90b4e004c240870874",
+        "config_hash": "c846cb0c2621a625631fdcc30db4aff1702b871e20a93c74c904d3d5db0af496",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1463,9 +1451,9 @@
         "input_row_id": "tsv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "22b915550280cf1b",
-        "prompt_hash": "ef4a43ad2891df8608e82446884f147a799cfefe1148829149bc1dcc78ccec04",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "17eccf0eeab9bdc3",
+        "prompt_hash": "4fe99d0c3cd28bedc0ef673410de0d5c6d5dc8ed947926c84a5b22d446e7e567",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "fixed_binary_probe",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1480,7 +1468,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "bbf8dd2637fe57e4c51d4b211c371c5c0dbed122f11c67ef4b65dd180dd23ac4",
+        "config_hash": "24308a64fa5d0f0e8255cd055de85f9fe04cade3fd98a9d9ea6d4885c3a6eddb",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1491,8 +1479,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "1de814923d8c785ac446c0cf208991540dac8f66e4591c395279ac5e38550542",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "58eb8f82b5238f163de420645fe49beaafe8c3f7f639b3e8a14177e5623ecb72",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1501,8 +1489,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -1510,7 +1497,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "bbf8dd2637fe57e4c51d4b211c371c5c0dbed122f11c67ef4b65dd180dd23ac4",
+        "config_hash": "24308a64fa5d0f0e8255cd055de85f9fe04cade3fd98a9d9ea6d4885c3a6eddb",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1521,8 +1508,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "6c683bd7f30c2595",
-        "prompt_hash": "cf480a475e831fe2fc9acfb8b7bf83d37a5ad4645a84a78810f53e628b710bac",
+        "prompt_group_id": "d54746e42ef4cfa0",
+        "prompt_hash": "92d261be9e728a2b47d63fca493cba65e7f3fef621828f83e3bf55452b3d18d1",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "multi_label",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1531,8 +1518,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `labels`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.labels: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "multi_label_json"
@@ -1540,7 +1526,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "071e0fe538927054f4483352ef76bc757c67439ce81a72d2f2effe7d8a0836fc",
+        "config_hash": "3d233fcd997602973abb75b3ba357f3b3251d604621617cf58e572c54f81003c",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1551,8 +1537,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "bffb51c4bef86b3f7b794c2a13d40bd7208391aae53d5409b0b6ea3c0108caee",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "d5724bfebfce4e462cf3d94c2c5daf14d76093fe2920bf8004078f432f160ef2",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1561,8 +1547,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -1570,7 +1555,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "071e0fe538927054f4483352ef76bc757c67439ce81a72d2f2effe7d8a0836fc",
+        "config_hash": "3d233fcd997602973abb75b3ba357f3b3251d604621617cf58e572c54f81003c",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1581,8 +1566,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "9947380b88891c91",
-        "prompt_hash": "6aa742d5ec68d05fac26143064b169ae69f7ac050321666b8c715eb1cab10fed",
+        "prompt_group_id": "db5e1ea1a87e0ee8",
+        "prompt_hash": "c58df8589a376753b0a1165397c6ae4059cee70ae77818494c698f6e476a860a",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "ordinal_score",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1591,8 +1576,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$: missing required key `score`",
-          "$: unexpected key `label`"
+          "schema_validation_error: $.score: missing required property; $.label: additional property is not allowed"
         ],
         "validation_status": "invalid",
         "variant_id": "ordinal_score_json"
@@ -1602,14 +1586,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "4818cca0968736191547bc133a509afd2be144c5306e6aa5afd8170223f92b4a",
+        "config_hash": "a36f045eb06c0adbdaa9d8258dc30ae4392fc77f2960b4e8081ce0d0b6388f1f",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1619,9 +1603,9 @@
         "input_row_id": "tsv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "58ea8d5524080a837c8af23d7ae9a3d6e17a091342ec17e4c8cb1aa2ae16a947",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "c002e163baeffea6b993cacf612e12548923d217c3ffbd9e3d5885050b409b66",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1638,14 +1622,14 @@
         "candidate_scores": [
           [
             "A",
-            -0.0
+            0.0
           ],
           [
             "B",
             -1.0
           ]
         ],
-        "config_hash": "4818cca0968736191547bc133a509afd2be144c5306e6aa5afd8170223f92b4a",
+        "config_hash": "a36f045eb06c0adbdaa9d8258dc30ae4392fc77f2960b4e8081ce0d0b6388f1f",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1655,9 +1639,9 @@
         "input_row_id": "tsv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
-        "prompt_group_id": "7ef1179b3be2e5fa",
-        "prompt_hash": "5868a0202e27dc940f3402e3fd866e9024d4138762793d249a9ed4364755b44b",
+        "parsed_output": "{\"candidates\": {\"A\": 0.0, \"B\": -1.0}}",
+        "prompt_group_id": "5c001f3cf8dd5859",
+        "prompt_hash": "15677b61ccc69c9ad843faf98ab53bfd894588855d169cd1e4917f48e12f08be",
         "raw_response": "{\"candidates\": {\"A\": -0.0, \"B\": -1.0}}",
         "result_type": "categorical_logprobs",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1672,7 +1656,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "f6defce85d0e9fc721e99addd72bb5764a98c256e0ce5abc4dc04d17124fe505",
+        "config_hash": "fb850dbf50a2abd607efd2bba1aaa2d1cc0c8dedf7057d7a9033732fa41e2650",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1683,8 +1667,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "ffcee9e1dfeb34d9566c7cbbd0c1cb7144783232057444d17c8486a7650e2885",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "0032964895a6f3d148e6692bcfca591676924add611130b74b5069352240e764",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1693,7 +1677,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -1701,7 +1685,7 @@
       {
         "attempt_count": 2,
         "candidate_scores": null,
-        "config_hash": "f6defce85d0e9fc721e99addd72bb5764a98c256e0ce5abc4dc04d17124fe505",
+        "config_hash": "fb850dbf50a2abd607efd2bba1aaa2d1cc0c8dedf7057d7a9033732fa41e2650",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "failed_validation",
@@ -1712,8 +1696,8 @@
         "input_text": null,
         "model_id": "fake",
         "parsed_output": "{\"label\": \"alpha\"}",
-        "prompt_group_id": "732196997c9b4ee5",
-        "prompt_hash": "ad3f1beccddff8cf019d238446f3909fa44908f6630c6069c0eb581b32122b63",
+        "prompt_group_id": "667845a72586d8ec",
+        "prompt_hash": "a365cc97730f6742def53c40353842f2fc3776157817bfbc2868f7eeff09a3af",
         "raw_response": "{\"label\": \"alpha\"}",
         "result_type": "single_label",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1722,7 +1706,7 @@
         "token_count": 1,
         "tool_version": "0.2.0",
         "validation_errors": [
-          "$.label: value is not an allowed candidate"
+          "schema_validation_error: $.label: value is not in enum"
         ],
         "validation_status": "invalid",
         "variant_id": "single_label_json"
@@ -1732,14 +1716,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
+        "config_hash": "fff0e56f4c7641cb1c4ff4f591ed51728788d67de54dbc37db0c7d7843b8c55f",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1749,9 +1733,9 @@
         "input_row_id": "tsv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "bdd2ae6359caedf0dafa3d13f68e7317d81d6d1677c8eca33aeab70e5f64ba3b",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "e1d63eaa231acadc153018c776e6d65ed6006417e318d81f336dfca99926bdfa",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1768,14 +1752,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
+        "config_hash": "fff0e56f4c7641cb1c4ff4f591ed51728788d67de54dbc37db0c7d7843b8c55f",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1785,9 +1769,9 @@
         "input_row_id": "tsv-1",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "9ddeab3b67c9205c601ec08dfa9644e8f7a7d3ed17cfd05fc1cb8a84e057cead",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "1ccd9f8896caf756cf836ea75a5e2c74cb2e2ceae26e0ef4e85a9355e33b6ba0",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1804,14 +1788,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
+        "config_hash": "fff0e56f4c7641cb1c4ff4f591ed51728788d67de54dbc37db0c7d7843b8c55f",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1821,9 +1805,9 @@
         "input_row_id": "tsv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "d89a97d19fbbb3dcb33dce5808afebba6e84c3210cb04ce7ba3378387c376e9b",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "01e6ccf6f3d0adea15d12bb6bec0346837ff7762810bcd43f479988aab9f8d01",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1840,14 +1824,14 @@
         "candidate_scores": [
           [
             "yes",
-            -0.0
+            0.0
           ],
           [
             "no",
             -1.0
           ]
         ],
-        "config_hash": "d553e07e8ebb2c84a6c810d4a8c90ebcfb6c99eab9fb45e8914c06f25d65a06c",
+        "config_hash": "fff0e56f4c7641cb1c4ff4f591ed51728788d67de54dbc37db0c7d7843b8c55f",
         "contract_version": "2.0",
         "dataset_id": "paired_tsv",
         "final_status": "completed",
@@ -1857,9 +1841,9 @@
         "input_row_id": "tsv-2",
         "input_text": null,
         "model_id": "fake",
-        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": -0.0}}",
-        "prompt_group_id": "e2fa397f4fff910a",
-        "prompt_hash": "2bf68b5695fb784bab0d708bcab267b37a3f884f1cc38f68da925901a4d374c3",
+        "parsed_output": "{\"candidates\": {\"no\": -1.0, \"yes\": 0.0}}",
+        "prompt_group_id": "fb5482a09ff09a11",
+        "prompt_hash": "bb2a23f943d6d6e8b3c39f6bc48701159694699709ffd7af7e4dcc5828ddcd3e",
         "raw_response": "{\"candidates\": {\"yes\": -0.0, \"no\": -1.0}}",
         "result_type": "label_yes_no_logprobs",
         "run_id": "matrix_smoke__paired_tsv",
@@ -1965,98 +1949,140 @@
             {
               "id": "single_label_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "single_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-single-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "single_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-single-label.json"
-              }
+              ]
             },
             {
               "id": "multi_label_json",
               "max_tokens": 48,
+              "processor": {
+                "result": "multi_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-multi-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-multi-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "multi_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-multi-label.json"
-              }
+              ]
             },
             {
               "id": "ordinal_score_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "ordinal_score",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "schema": "experiment-cli/prompt/schema-ordinal-score.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-ordinal-score.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "ordinal_score",
-              "validation": {
-                "schema": "experiment-cli/prompt/schema-ordinal-score.json"
-              }
+              ]
             },
             {
-              "candidates_from": "code_labels",
               "id": "single_label_code_logits",
+              "processor": {
+                "result": "categorical_logprobs",
+                "stages": [
+                  {
+                    "candidates_from": "code_labels",
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label-code.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "categorical_logprobs"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
               "id": "independent_yes_no_logits",
+              "processor": {
+                "result": "fixed_binary_probe",
+                "stages": [
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-yes-no.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "fixed_binary_probe"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
-              "expand_over": "dataset_labels",
               "id": "soft_multi_label_yes_no_logits",
+              "processor": {
+                "result": "label_yes_no_logprobs",
+                "stages": [
+                  {
+                    "over": "dataset_labels",
+                    "type": "fan_out"
+                  },
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "label_yes_no_logprobs"
+              ]
             }
           ]
         },
@@ -2068,6 +2094,9 @@
           "name": "fake"
         },
         "model_id": "fake",
+        "output": {
+          "format": "parquet"
+        },
         "result_rows": 14,
         "resume_skipped_rows": 0,
         "run_id": "matrix_smoke__nested_json",
@@ -2075,22 +2104,22 @@
         "tool_version": "0.2.0",
         "variants": {
           "independent_yes_no_logits": {
-            "prompt_group_id": "22b915550280cf1b"
+            "prompt_group_id": "17eccf0eeab9bdc3"
           },
           "multi_label_json": {
-            "prompt_group_id": "6c683bd7f30c2595"
+            "prompt_group_id": "d54746e42ef4cfa0"
           },
           "ordinal_score_json": {
-            "prompt_group_id": "9947380b88891c91"
+            "prompt_group_id": "db5e1ea1a87e0ee8"
           },
           "single_label_code_logits": {
-            "prompt_group_id": "7ef1179b3be2e5fa"
+            "prompt_group_id": "5c001f3cf8dd5859"
           },
           "single_label_json": {
-            "prompt_group_id": "732196997c9b4ee5"
+            "prompt_group_id": "667845a72586d8ec"
           },
           "soft_multi_label_yes_no_logits": {
-            "prompt_group_id": "e2fa397f4fff910a"
+            "prompt_group_id": "fb5482a09ff09a11"
           }
         }
       },
@@ -2182,98 +2211,140 @@
             {
               "id": "single_label_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "single_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-single-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "single_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-single-label.json"
-              }
+              ]
             },
             {
               "id": "multi_label_json",
               "max_tokens": 48,
+              "processor": {
+                "result": "multi_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-multi-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-multi-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "multi_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-multi-label.json"
-              }
+              ]
             },
             {
               "id": "ordinal_score_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "ordinal_score",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "schema": "experiment-cli/prompt/schema-ordinal-score.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-ordinal-score.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "ordinal_score",
-              "validation": {
-                "schema": "experiment-cli/prompt/schema-ordinal-score.json"
-              }
+              ]
             },
             {
-              "candidates_from": "code_labels",
               "id": "single_label_code_logits",
+              "processor": {
+                "result": "categorical_logprobs",
+                "stages": [
+                  {
+                    "candidates_from": "code_labels",
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label-code.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "categorical_logprobs"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
               "id": "independent_yes_no_logits",
+              "processor": {
+                "result": "fixed_binary_probe",
+                "stages": [
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-yes-no.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "fixed_binary_probe"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
-              "expand_over": "dataset_labels",
               "id": "soft_multi_label_yes_no_logits",
+              "processor": {
+                "result": "label_yes_no_logprobs",
+                "stages": [
+                  {
+                    "over": "dataset_labels",
+                    "type": "fan_out"
+                  },
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "label_yes_no_logprobs"
+              ]
             }
           ]
         },
@@ -2285,6 +2356,9 @@
           "name": "fake"
         },
         "model_id": "fake",
+        "output": {
+          "format": "parquet"
+        },
         "result_rows": 14,
         "resume_skipped_rows": 0,
         "run_id": "matrix_smoke__jsonl",
@@ -2292,22 +2366,22 @@
         "tool_version": "0.2.0",
         "variants": {
           "independent_yes_no_logits": {
-            "prompt_group_id": "22b915550280cf1b"
+            "prompt_group_id": "17eccf0eeab9bdc3"
           },
           "multi_label_json": {
-            "prompt_group_id": "6c683bd7f30c2595"
+            "prompt_group_id": "d54746e42ef4cfa0"
           },
           "ordinal_score_json": {
-            "prompt_group_id": "9947380b88891c91"
+            "prompt_group_id": "db5e1ea1a87e0ee8"
           },
           "single_label_code_logits": {
-            "prompt_group_id": "7ef1179b3be2e5fa"
+            "prompt_group_id": "5c001f3cf8dd5859"
           },
           "single_label_json": {
-            "prompt_group_id": "732196997c9b4ee5"
+            "prompt_group_id": "667845a72586d8ec"
           },
           "soft_multi_label_yes_no_logits": {
-            "prompt_group_id": "e2fa397f4fff910a"
+            "prompt_group_id": "fb5482a09ff09a11"
           }
         }
       },
@@ -2399,98 +2473,140 @@
             {
               "id": "single_label_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "single_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-single-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "single_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-single-label.json"
-              }
+              ]
             },
             {
               "id": "multi_label_json",
               "max_tokens": 48,
+              "processor": {
+                "result": "multi_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-multi-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-multi-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "multi_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-multi-label.json"
-              }
+              ]
             },
             {
               "id": "ordinal_score_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "ordinal_score",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "schema": "experiment-cli/prompt/schema-ordinal-score.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-ordinal-score.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "ordinal_score",
-              "validation": {
-                "schema": "experiment-cli/prompt/schema-ordinal-score.json"
-              }
+              ]
             },
             {
-              "candidates_from": "code_labels",
               "id": "single_label_code_logits",
+              "processor": {
+                "result": "categorical_logprobs",
+                "stages": [
+                  {
+                    "candidates_from": "code_labels",
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label-code.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "categorical_logprobs"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
               "id": "independent_yes_no_logits",
+              "processor": {
+                "result": "fixed_binary_probe",
+                "stages": [
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-yes-no.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "fixed_binary_probe"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
-              "expand_over": "dataset_labels",
               "id": "soft_multi_label_yes_no_logits",
+              "processor": {
+                "result": "label_yes_no_logprobs",
+                "stages": [
+                  {
+                    "over": "dataset_labels",
+                    "type": "fan_out"
+                  },
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "label_yes_no_logprobs"
+              ]
             }
           ]
         },
@@ -2502,6 +2618,9 @@
           "name": "fake"
         },
         "model_id": "fake",
+        "output": {
+          "format": "parquet"
+        },
         "result_rows": 14,
         "resume_skipped_rows": 0,
         "run_id": "matrix_smoke__paired_tsv",
@@ -2509,22 +2628,22 @@
         "tool_version": "0.2.0",
         "variants": {
           "independent_yes_no_logits": {
-            "prompt_group_id": "22b915550280cf1b"
+            "prompt_group_id": "17eccf0eeab9bdc3"
           },
           "multi_label_json": {
-            "prompt_group_id": "6c683bd7f30c2595"
+            "prompt_group_id": "d54746e42ef4cfa0"
           },
           "ordinal_score_json": {
-            "prompt_group_id": "9947380b88891c91"
+            "prompt_group_id": "db5e1ea1a87e0ee8"
           },
           "single_label_code_logits": {
-            "prompt_group_id": "7ef1179b3be2e5fa"
+            "prompt_group_id": "5c001f3cf8dd5859"
           },
           "single_label_json": {
-            "prompt_group_id": "732196997c9b4ee5"
+            "prompt_group_id": "667845a72586d8ec"
           },
           "soft_multi_label_yes_no_logits": {
-            "prompt_group_id": "e2fa397f4fff910a"
+            "prompt_group_id": "fb5482a09ff09a11"
           }
         }
       },
@@ -2621,98 +2740,140 @@
             {
               "id": "single_label_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "single_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-single-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "single_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-single-label.json"
-              }
+              ]
             },
             {
               "id": "multi_label_json",
               "max_tokens": 48,
+              "processor": {
+                "result": "multi_label",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "enum_from": "dataset_labels",
+                    "schema": "experiment-cli/prompt/schema-multi-label.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-multi-label.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "multi_label",
-              "validation": {
-                "enum_from": "dataset_labels",
-                "schema": "experiment-cli/prompt/schema-multi-label.json"
-              }
+              ]
             },
             {
               "id": "ordinal_score_json",
               "max_tokens": 32,
+              "processor": {
+                "result": "ordinal_score",
+                "stages": [
+                  {
+                    "type": "json_decode"
+                  },
+                  {
+                    "schema": "experiment-cli/prompt/schema-ordinal-score.json",
+                    "type": "json_schema"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-ordinal-score.md",
                 "experiment-cli/prompt/output-json.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "generate",
-              "result_type": "ordinal_score",
-              "validation": {
-                "schema": "experiment-cli/prompt/schema-ordinal-score.json"
-              }
+              ]
             },
             {
-              "candidates_from": "code_labels",
               "id": "single_label_code_logits",
+              "processor": {
+                "result": "categorical_logprobs",
+                "stages": [
+                  {
+                    "candidates_from": "code_labels",
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-single-label-code.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "categorical_logprobs"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
               "id": "independent_yes_no_logits",
+              "processor": {
+                "result": "fixed_binary_probe",
+                "stages": [
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/task-yes-no.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "fixed_binary_probe"
+              ]
             },
             {
-              "candidates": [
-                "yes",
-                "no"
-              ],
-              "expand_over": "dataset_labels",
               "id": "soft_multi_label_yes_no_logits",
+              "processor": {
+                "result": "label_yes_no_logprobs",
+                "stages": [
+                  {
+                    "over": "dataset_labels",
+                    "type": "fan_out"
+                  },
+                  {
+                    "candidates": [
+                      "yes",
+                      "no"
+                    ],
+                    "type": "candidate_logprobs"
+                  }
+                ]
+              },
               "prompts": [
                 "experiment-cli/prompt/system.md",
                 "experiment-cli/prompt/context.md",
                 "experiment-cli/prompt/candidate-answer.md",
                 "experiment-cli/prompt/input.md",
                 "experiment-cli/prompt/task-yes-no-target.md"
-              ],
-              "request_mode": "candidate_logprobs",
-              "result_type": "label_yes_no_logprobs"
+              ]
             }
           ]
         },
@@ -2724,6 +2885,9 @@
           "name": "fake"
         },
         "model_id": "fake",
+        "output": {
+          "format": "parquet"
+        },
         "result_rows": 14,
         "resume_skipped_rows": 0,
         "run_id": "matrix_smoke__filtered_csv",
@@ -2731,22 +2895,22 @@
         "tool_version": "0.2.0",
         "variants": {
           "independent_yes_no_logits": {
-            "prompt_group_id": "22b915550280cf1b"
+            "prompt_group_id": "17eccf0eeab9bdc3"
           },
           "multi_label_json": {
-            "prompt_group_id": "6c683bd7f30c2595"
+            "prompt_group_id": "d54746e42ef4cfa0"
           },
           "ordinal_score_json": {
-            "prompt_group_id": "9947380b88891c91"
+            "prompt_group_id": "db5e1ea1a87e0ee8"
           },
           "single_label_code_logits": {
-            "prompt_group_id": "7ef1179b3be2e5fa"
+            "prompt_group_id": "5c001f3cf8dd5859"
           },
           "single_label_json": {
-            "prompt_group_id": "732196997c9b4ee5"
+            "prompt_group_id": "667845a72586d8ec"
           },
           "soft_multi_label_yes_no_logits": {
-            "prompt_group_id": "e2fa397f4fff910a"
+            "prompt_group_id": "fb5482a09ff09a11"
           }
         }
       }

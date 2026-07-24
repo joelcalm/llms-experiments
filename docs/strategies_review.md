@@ -1,93 +1,139 @@
-# Review of LLM Inference & Classification Strategies
+# Implemented Processing Strategies
 
-This document provides a detailed review, explanation, and efficiency analysis of the classification and scoring strategies implemented in `llms-experiments`.
+Strategies are YAML processor pipelines, not Python strategy subclasses.
+Backends return raw text and token evidence; the stages below perform all
+interpretation. This keeps the same behavior across vLLM, llama.cpp,
+OpenAI-compatible endpoints, and external batch files.
 
----
+## Structured single label
 
-## 1. Overview of Strategies
-
-The framework supports three core request modes (`request_mode`):
-1. **`generate`**: Generates a structured JSON response under JSON Schema constraints.
-2. **`generate_with_logprobs`**: Generates structured JSON and retains a top-token distribution at every generated position.
-3. **`candidate_logprobs`**: Captures raw probability scores (logits) of target tokens to determine classes.
-
-Using these modes, the supplied configurations implement seven inference contracts:
-
-```mermaid
-graph TD
-    A[Inference Strategies] --> B[generate Mode <br/>Structured JSON]
-    A --> D[generate_with_logprobs Mode <br/>Structured JSON + token distributions]
-    A --> C[candidate_logprobs Mode <br/>Logits / Probabilities]
-
-    B --> B1["single_label_json<br/>(One multi-class label)"]
-    B --> B2["multi_label_json<br/>(Zero or more labels)"]
-    B --> B3["ordinal_score_json<br/>(Likert scale 1-5)"]
-
-    C --> C1["single_label_code_logits<br/>(First-token multi-class code)"]
-    C --> C2["independent_yes_no_logits<br/>(First-token binary yes/no)"]
-    C --> C3["soft_multi_label_yes_no_logits<br/>(One yes/no probe per label)"]
-    D --> D1["verbalized_confidence<br/>(Label + literal and weighted confidence)"]
+```yaml
+processor:
+  result: single_label
+  stages:
+    - type: json_decode
+    - type: json_schema
+      schema: schemas/single-label.json
+      enum_from: dataset_labels
 ```
 
----
+`json_schema` contributes a structured-output constraint to the generation
+request. After generation, `json_decode` parses the text and `json_schema`
+validates required fields, types, enums, bounds, and additional properties.
+`enum_from` replaces string enums with the active dataset taxonomy, so the
+constraint sent to the model exactly matches validation.
 
-## 2. Detailed Strategy Mechanics
+## Structured multi label
 
-### Strategy 1: `single_label_json` (Multi-class via JSON)
-* **How it works**: The prompt asks the model to output a single label corresponding to the classification task.
-* **Output structure**: Enforced by `schema-single-label.json` to be a JSON object containing a `"label"` key with values matching the allowed enum (e.g. `["alpha", "beta", "gamma"]`).
-  ```json
-  { "label": "alpha" }
-  ```
-* **Constraint Enforcement**: Uses vLLM's `StructuredOutputsParams` (guided decoding via context-free grammars).
+```yaml
+processor:
+  result: multi_label
+  stages:
+    - type: json_decode
+    - type: json_schema
+      schema: schemas/multi-label.json
+      enum_from: dataset_labels
+```
 
-### Strategy 2: `multi_label_json` (Multi-label via JSON)
-* **How it works**: The prompt asks the model to output all labels from the label set that apply to the input text.
-* **Output structure**: Enforced by `schema-multi-label.json` to return a JSON list of strings under `"labels"`.
-  ```json
-  { "labels": ["alpha", "gamma"] }
-  ```
-* **Constraint Enforcement**: Enforces a list of strings matching the allowed categories.
+This is the same mechanism with an array-valued schema. The processor returns
+the validated JSON value; thresholding and evaluation remain downstream.
 
-### Strategy 3: `ordinal_score_json` (Ordinal scaling via JSON)
-* **How it works**: The prompt asks the model to output a numeric score representing the strength of evidence or category rating.
-* **Output structure**: Enforced by `schema-ordinal-score.json` to return an integer between `1` and `5` inclusive.
-  ```json
-  { "score": 3 }
-  ```
-* **Constraint Enforcement**: Limits output to a valid Likert scale integer.
+## Ordinal score
 
-### Strategy 4: `single_label_code_logits` (Multi-class via Logits)
-* **How it works**:
-  1. The prompt formats mapping codes (e.g., `A`, `B`, `C`) and instructs the model: *"Choose exactly one configured code"* and *"Return exactly one candidate token"*.
-  2. The runner requests `max_completion_tokens: 1` (or `max_tokens=1` in-process).
-  3. The runner requests token logprobs for the top `K` candidates (where $K = \min(20, \text{len(candidates)} + 5)$).
-  4. The runner extracts the probability (logprob) of each configured candidate code at the first token position. If a candidate code does not appear in the top $K$ tokens, it is assigned $-\infty$.
-* **Output structure**: A dictionary of candidates and their log-probabilities.
-  ```json
-  {
-    "A": -0.15,
-    "B": -4.20,
-    "C": -12.5
-  }
-  ```
+```yaml
+processor:
+  result: ordinal_score
+  stages:
+    - type: json_decode
+    - type: json_schema
+      schema: schemas/ordinal-score.json
+```
 
-### Strategy 5: `independent_yes_no_logits` (Binary classification via Logits)
-* **How it works**: Identical in mechanism to `single_label_code_logits`, but the candidate set is fixed to `["yes", "no"]`. The runner extracts the relative logprobs of the model generating `"yes"` versus `"no"` as the first token response to a binary question.
-* **Output structure**:
-  ```json
-  {
-    "yes": -0.05,
-    "no": -6.12
-  }
-  ```
+The schema limits the generated integer, typically to a Likert range. The
+semantic result remains `ordinal_score`, distinct from classification.
 
-### Strategy 6: `soft_multi_label_yes_no_logits` (Per-label binary logits)
+## Categorical first-token log probabilities
 
-* **How it works**: The runner expands each source item over the configured label set and issues one independent yes/no request per label.
-* **Output structure**: Each Parquet row retains the source item ID, `target_label`, and the raw yes/no candidate log-probabilities. Thresholding and metric computation are left to an independent evaluator.
+```yaml
+processor:
+  result: categorical_logprobs
+  stages:
+    - type: candidate_logprobs
+      candidates_from: code_labels
+```
 
-### Strategy 7: `verbalized_confidence` (Single label with confidence)
+The stage compiles requirements for exactly one generated token, positional
+log probabilities, and `min(20, candidate_count + 5)` alternatives. At the
+first generated position it strips tokenizer whitespace and combines duplicate
+spellings such as `"A"` and `" A"` with log-sum-exp. Missing candidates are
+recorded as negative infinity. The parsed value and `candidate_scores` both
+retain the full candidate mapping.
 
-* **How it works**: The model returns one label and two separate confidence digits in a schema-constrained JSON object. A single generation therefore supplies both the literal score and the token distributions required for the weighted score.
-* **Literal confidence**: `(10 * confidence_tens + confidence_units) / 100`.
+## Fixed yes/no probe
+
+```yaml
+processor:
+  result: fixed_binary_probe
+  stages:
+    - type: candidate_logprobs
+      candidates: ["yes", "no"]
+```
+
+This uses the same extraction algorithm with a fixed candidate set. It answers
+one configured binary question and is intentionally distinct from a complete
+multi-label prediction.
+
+## Per-label soft multi-label scores
+
+```yaml
+processor:
+  result: label_yes_no_logprobs
+  stages:
+    - type: fan_out
+      over: dataset_labels
+    - type: candidate_logprobs
+      candidates: ["yes", "no"]
+```
+
+`fan_out` runs before generation. For each source row it creates one row per
+label, sets `_target_label`, and derives a deterministic expanded
+`_source_position`. Each expanded row is independently resumable and then
+passes through yes/no candidate extraction. The output therefore retains the
+source ID, target label, and both raw log scores.
+
+## Verbalized confidence with token evidence
+
+```yaml
+processor:
+  result: single_label_verbalized_confidence
+  stages:
+    - type: json_decode
+    - type: json_schema
+      schema: schemas/verbalized-confidence.json
+      enum_from: dataset_labels
+    - type: verbalized_confidence
+      top_logprobs: 20
+```
+
+The model returns `label`, `confidence_tens`, and `confidence_units` as separate
+schema-constrained fields. The final stage scans generated token positions
+backward to align the sampled units and tens digits. At each position it
+combines tokenizer spellings of digits with log-sum-exp and derives:
+
+- literal confidence: `(10 * tens + units) / 100`;
+- weighted confidence: the expected two-digit value from observed token
+  probabilities, divided by 100;
+- per-position digit log probabilities;
+- observed digit probability mass as a coverage diagnostic.
+
+The observed top-logprob distribution is not renormalized. Missing or
+unalignable digit evidence emits a typed processing error and stops the
+pipeline.
+
+## Error behavior
+
+Stages execute in order and stop at the first typed error. Backend failures,
+JSON parsing failures, schema violations, and evidence-processing failures have
+separate categories. This classification drives result status and retry:
+backend failures are retryable on resume, while deterministic model validation
+failures remain durable.

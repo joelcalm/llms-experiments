@@ -27,10 +27,11 @@ resources:
     thread_pool_size: 1
 variants:
   - id: soft_multi_label_yes_no_logits
-    result_type: label_yes_no_logprobs
-    request_mode: candidate_logprobs
-    candidates: ["yes", "no"]
-    expand_over: dataset_labels
+    processor:
+      result: label_yes_no_logprobs
+      stages:
+        - {type: fan_out, over: dataset_labels}
+        - {type: candidate_logprobs, candidates: ["yes", "no"]}
     prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md, experiment-cli/prompt/task-yes-no-target.md]
 batch:
   mode: auto

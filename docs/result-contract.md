@@ -1,6 +1,6 @@
 # Result Contract 2.0
 
-Every run writes `manifest.json`, `effective_config.yaml`, append-only parts, `results.parquet`, and one projection per variant. Matrix runs also write a matrix manifest and one independent dataset directory per lane.
+Every run writes `manifest.json`, `effective_config.yaml`, append-only parts, one combined result file, and one projection per variant. The extension is selected by `output.format`: `parquet`, `csv`, or `jsonl`. Matrix runs also write a matrix manifest and one independent dataset directory per lane.
 
 ## Manifest
 
@@ -22,8 +22,13 @@ Required identity fields are `contract_version`, `tool_version`, `run_id`, `mode
 | `fixed_binary_probe` | one fixed binary question, not a full taxonomy prediction |
 | `single_label_verbalized_confidence` | one taxonomy label plus literal and digit-logprob-weighted confidence |
 
-`gold_labels` and `validation_errors` are native Arrow lists.
-`candidate_scores` is a native Arrow map of string to float. Variable structured output remains canonical, key-sorted JSON in `parsed_output`; optional raw text remains in `raw_response`. Label-wise rows retain `target_label`.
+`gold_labels` and `validation_errors` are logical string lists, and
+`candidate_scores` is a logical string-to-float map. They are native Arrow
+values in Parquet and losslessly encoded in CSV/JSONL. Non-finite candidate
+scores use tagged encodings outside Parquet so `±Infinity` and `NaN` round-trip
+without becoming strings or nulls. Variable structured output remains
+canonical, key-sorted JSON in `parsed_output`; optional raw text remains in
+`raw_response`. Label-wise rows retain `target_label`.
 
 For `single_label_verbalized_confidence`, `parsed_output` contains the validated `label`, `confidence_tens`, and `confidence_units`, plus four derived fields:
 

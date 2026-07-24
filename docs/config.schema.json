@@ -55,7 +55,8 @@
           "enum": [
             "local_vllm",
             "openai_compatible",
-            "fake"
+            "fake",
+            "llama_cpp"
           ],
           "title": "Backend",
           "type": "string"
@@ -79,12 +80,75 @@
         "directory": {
           "title": "Directory",
           "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "enum": [
+                "parquet",
+                "csv",
+                "jsonl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
         }
       },
       "required": [
         "directory"
       ],
       "title": "OutputConfig",
+      "type": "object"
+    },
+    "ProcessingStageConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "enum": [
+            "identity",
+            "fan_out",
+            "json_decode",
+            "json_schema",
+            "candidate_logprobs",
+            "verbalized_confidence"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ProcessingStageConfig",
+      "type": "object"
+    },
+    "ProcessorConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "result": {
+          "minLength": 1,
+          "title": "Result",
+          "type": "string"
+        },
+        "stages": {
+          "items": {
+            "$ref": "#/$defs/ProcessingStageConfig"
+          },
+          "minItems": 1,
+          "title": "Stages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "result",
+        "stages"
+      ],
+      "title": "ProcessorConfig",
       "type": "object"
     },
     "RunConfig": {
@@ -110,6 +174,17 @@
           "title": "Id",
           "type": "string"
         },
+        "processor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProcessorConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "prompts": {
           "items": {
             "type": "string"
@@ -117,32 +192,10 @@
           "minItems": 1,
           "title": "Prompts",
           "type": "array"
-        },
-        "request_mode": {
-          "enum": [
-            "generate",
-            "generate_with_logprobs",
-            "candidate_logprobs"
-          ],
-          "title": "Request Mode",
-          "type": "string"
-        },
-        "result_type": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Result Type"
         }
       },
       "required": [
         "id",
-        "request_mode",
         "prompts"
       ],
       "title": "VariantConfig",
