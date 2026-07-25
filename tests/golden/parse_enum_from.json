@@ -270,6 +270,7 @@
       "candidate_scores": null,
       "config_hash": "c54466ad29135fb318553476d180f29a43aaf604ff9b65d7b5a69535edbd7120",
       "contract_version": "2.0",
+      "dataset": "nested_json",
       "dataset_id": "nested_json",
       "final_status": "completed",
       "gold_labels": [
@@ -297,6 +298,7 @@
       "candidate_scores": null,
       "config_hash": "c54466ad29135fb318553476d180f29a43aaf604ff9b65d7b5a69535edbd7120",
       "contract_version": "2.0",
+      "dataset": "nested_json",
       "dataset_id": "nested_json",
       "final_status": "completed",
       "gold_labels": [
@@ -324,6 +326,7 @@
       "candidate_scores": null,
       "config_hash": "ca687c8b7ac9abb0618ab7d08df848ec02d78520098711ec6b6dc2d1b9ab192b",
       "contract_version": "2.0",
+      "dataset": "nested_json",
       "dataset_id": "nested_json",
       "final_status": "completed",
       "gold_labels": [
@@ -351,6 +354,7 @@
       "candidate_scores": null,
       "config_hash": "ca687c8b7ac9abb0618ab7d08df848ec02d78520098711ec6b6dc2d1b9ab192b",
       "contract_version": "2.0",
+      "dataset": "nested_json",
       "dataset_id": "nested_json",
       "final_status": "completed",
       "gold_labels": [

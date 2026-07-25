@@ -38,6 +38,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 testpaths = ["tests"]
 # The runner logs verbosely to its own files; don't mirror it into failures.
 addopts = "--show-capture=no"
