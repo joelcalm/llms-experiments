@@ -1,0 +1,8 @@
+[thresholds.inference]
+min_schema_validity_rate = 0.99
+max_retry_rate = 0.05
+min_logprob_coverage = 1.00
+
+[policy]
+retry_on_schema_error = true
+max_retries = 3
