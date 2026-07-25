@@ -19,7 +19,7 @@ class ConfigurationDefaultWarning(UserWarning):
 
 
 class LegacyConfigurationWarning(UserWarning):
-    """A visible warning that removed configuration fields were ignored."""
+    """A visible warning that unhandled configuration fields were ignored."""
 
 
 def create_stage(specification: Mapping[str, Any]) -> ProcessingStage:
@@ -46,7 +46,7 @@ def create_processor(
     for name in LEGACY_PROCESSOR_FIELDS:
         if name in variant:
             warnings.warn(
-                f"{variant.get('id', '<variant>')}: {name} is ignored; processing is controlled by processor.stages",
+                f"{variant.get('id', '<variant>')}: {name} is unhandled; processing is controlled by processor.stages",
                 LegacyConfigurationWarning,
                 stacklevel=2,
             )
@@ -80,6 +80,6 @@ def create_processor(
 
 
 def processor_config_hash_material(variant: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Return behavior-defining processor material without removed legacy fields."""
+    """Return behavior-defining processor configuration fields for config hashing."""
 
     return {key: value for key, value in variant.items() if key not in LEGACY_PROCESSOR_FIELDS}

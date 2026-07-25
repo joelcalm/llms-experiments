@@ -1,4 +1,4 @@
-"""Deprecated v0.2 helpers retained for source-compatible imports."""
+"""Response conversion utilities and backwards-compatibility helpers for RawModelResponse."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .results import BACKEND_ERROR_PREFIX, validate_response
 
 @dataclass
 class Response:
-    """Legacy response shape; new integrations should use ``RawModelResponse``."""
+    """Structured response wrapper; callers requiring typed token streams should use ``RawModelResponse``."""
 
     raw: str
     token_count: int

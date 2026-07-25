@@ -73,16 +73,11 @@ def test_prepare_parse_roundtrip(tmp_path: Path, golden_update: bool) -> None:
 
 
 def test_prepare_parse_roundtrip_honours_enum_from(tmp_path: Path, golden_update: bool) -> None:
-    """The batch path must validate against the schema it actually sent.
+    """The batch path must validate against the schema sent to the model.
 
-    `prepare` substitutes `enum_from: dataset_labels` into the schema, so the
-    model is constrained to the real labels. `parse` used to re-load the raw
-    schema off disk and judge those labels against its placeholder enum
-    (alpha/beta/gamma), marking every row invalid and emitting a retry for it.
-
-    The smoke config cannot catch this: its dataset_labels *are* alpha/beta/gamma
-    and it sets no enum_from, so the two schemas coincide. This lane is a config
-    where they genuinely differ.
+    `prepare` substitutes `enum_from: dataset_labels` into the schema so the
+    model is constrained to the dataset's declared labels, and `parse` uses
+    the substituted schema to validate responses.
     """
     out = tmp_path / "batch"
     dataset = "nested_json"

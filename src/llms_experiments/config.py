@@ -89,7 +89,7 @@ class ExperimentConfig(ConfigSection):
 
 
 def load_config(path: str | Path, overrides: list[str] | None = None, *, check_files: bool = True) -> dict[str, Any]:
-    """Load legacy-compatible YAML, then enforce the typed v0.2 shape."""
+    """Load YAML configuration and enforce the typed ExperimentConfig schema."""
 
     config = configuration.load_config(path, overrides, check_files=check_files)
     ExperimentConfig.model_validate(config)
@@ -97,7 +97,7 @@ def load_config(path: str | Path, overrides: list[str] | None = None, *, check_f
 
 
 def configuration_schema() -> dict[str, Any]:
-    """Return the machine-readable JSON Schema for v0.2 configurations."""
+    """Return the machine-readable JSON Schema for experiment configurations."""
 
     return ExperimentConfig.model_json_schema()
 

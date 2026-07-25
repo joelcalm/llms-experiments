@@ -8,7 +8,7 @@
 
 `llms-experiments` is an installable, modular library and CLI for configuration-driven Large Language Model (LLM) inference. It provides durable, resumable Parquet, CSV, and JSONL outputs; in-process vLLM and llama.cpp engines; vendor-neutral OpenAI-compatible endpoints; external `vllm run-batch` workflows; and a deterministic fake backend for offline testing.
 
-This package executes inference runs and records durable predictions. It does not calculate accuracy, F1, diagnostic axioms, or aggregate evaluation reports. Its interoperability boundary is the versioned result contract 2.0.
+This package executes inference runs and records durable predictions according to the versioned result contract 2.0.
 
 ---
 
