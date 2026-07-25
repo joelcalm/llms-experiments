@@ -5,7 +5,7 @@ Contributions should keep the runner domain-agnostic and preserve the Parquet re
 ## Development Setup
 
 ```bash
-uv sync
+uv sync --all-groups
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest

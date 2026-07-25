@@ -240,5 +240,5 @@ def build_requests(config: dict[str, Any], rows: list[dict[str, Any]]) -> list[d
     for configured in config["variants"]:
         variant = materialize_variant(config, configured)
         processor: Processor = variant["_processor"]
-        requests.extend(request_for_row(config, variant, row) for row in processor.prepare_rows(rows))
+        requests.extend(request_for_row(config, variant, dict(row)) for row in processor.prepare_rows(rows))
     return requests

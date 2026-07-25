@@ -77,7 +77,7 @@ def tune(
             responses = backend.generate(warmup[:size], request)
             sync_cuda(synchronize_cuda)
             elapsed = max(time.perf_counter() - started, 1e-9)
-            record = {
+            record: dict[str, Any] = {
                 "candidate": size,
                 "accepted": True,
                 "rows_per_second": min(size, len(warmup)) / elapsed,
@@ -422,6 +422,8 @@ def run(
                                 input_row_id=str(row[config["input"]["id_column"]]),
                             )
                             current_response = response
+                            # allow_retry is only True when `correction` is truthy (see above), so this is safe.
+                            assert correction is not None
                             for _ in range(int(retry_settings.get("max_attempts", 0))):
                                 retry_prompt = render(
                                     correction,

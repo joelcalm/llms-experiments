@@ -26,6 +26,7 @@ def main() -> None:
     steps = [
         ("Ruff Format Check", [sys.executable, "-m", "ruff", "format", "--check", "."]),
         ("Ruff Lint Check", [sys.executable, "-m", "ruff", "check", "."]),
+        ("Mypy Type Check", [sys.executable, "-m", "mypy", "src"]),
         ("Pytest Test Suite", [sys.executable, "-m", "pytest"]),
     ]
 

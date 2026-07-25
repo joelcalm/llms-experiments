@@ -112,7 +112,7 @@ See [architecture.md](docs/architecture.md) and the independent [result contract
 ## Development
 
 ```bash
-uv sync
+uv sync --all-groups
 uv run ruff check .
 uv run ruff format --check .
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q

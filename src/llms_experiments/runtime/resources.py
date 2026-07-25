@@ -83,7 +83,8 @@ def sync_cuda(enabled: bool) -> None:
 
 def available_cpu_ids() -> list[int]:
     try:
-        return sorted(os.sched_getaffinity(0))
+        # os.sched_getaffinity is POSIX-only; absent on Windows and in typeshed for this platform.
+        return sorted(os.sched_getaffinity(0))  # type: ignore[attr-defined]
     except AttributeError:
         return list(range(os.cpu_count() or 1))
 

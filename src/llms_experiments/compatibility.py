@@ -128,9 +128,9 @@ def digit_logprobs(position: dict[str, Any]) -> dict[str, float]:
         if digit is not None:
             grouped.setdefault(str(digit), []).append(float(logprob))
     result: dict[str, float] = {}
-    for digit, values in grouped.items():
+    for digit_key, values in grouped.items():
         maximum = max(values)
-        result[digit] = maximum + math.log(sum(math.exp(value - maximum) for value in values))
+        result[digit_key] = maximum + math.log(sum(math.exp(value - maximum) for value in values))
     return result
 
 

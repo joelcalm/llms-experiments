@@ -24,6 +24,8 @@ Create or update the environment with:
 uv sync --all-groups
 ```
 
+(Today there is only one dependency group, `dev`, so this is equivalent to `uv sync`; prefer `--all-groups` so the command keeps working if more groups are added later.)
+
 Run commands through `uv run`. Do not use bare `python`, `pip`, Poetry, or Conda commands in repository documentation or automation.
 
 The supported Python version is declared in `.python-version` and `pyproject.toml`.
@@ -31,11 +33,9 @@ The supported Python version is declared in `.python-version` and `pyproject.tom
 ## Repository Map
 
 * `src/llms_experiments/`: maintained inference engine code (backends, processors, runtime, stores)
-* `tests/unit/`: fast unit tests without network, model downloads, or GPUs
-* `tests/integration/`: integration tests for output stores, batch roundtrips, and processors
-* `tests/gpu/`: marked GPU-dependent inference tests (opt-in)
+* `tests/`: flat test directory containing both `llms_experiments` package tests and the separate `experiment-cli` subprocess-based test suite (see `tests/conftest.py`). The `unit`, `integration`, and `gpu` pytest markers are registered in `pyproject.toml` but tests are not yet split into subdirectories or fully marked; use markers where practical when adding or modifying tests.
 * `evals/`: versioned evaluation cases, synthetic responses, and golden output snapshots
-* `configs/` & `experiments/`: non-secret runtime and matrix configurations
+* `experiments/`: non-secret runtime and matrix configurations
 * `docs/`: architecture, configuration schema, result contract, and setup guides
 * `scripts/`: operational entry points and automated repository compliance checks (`scripts/check.py`)
 
@@ -53,7 +53,7 @@ Or execute individual standard checks:
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src
-uv run pytest tests/unit tests/integration
+uv run pytest tests
 ```
 
 A change is not complete merely because unit tests pass.
@@ -97,7 +97,8 @@ Generated result outputs and model artifacts must not be committed to Git unless
 * Tests must be deterministic.
 * Every bug fix requires a regression test that fails before the fix.
 * Mock at external boundaries, not inside core processor or runner logic.
-* Mark tests using `unit`, `integration`, and `gpu` markers.
+* The `unit`, `integration`, and `gpu` pytest markers are registered in `pyproject.toml`; use them to mark new or modified tests where practical, even though the existing suite is not fully marked yet.
+* `tests/` is flat and holds two suites together: `llms_experiments` package tests, and `experiment-cli` subprocess-based tests (see the scope comment at the top of `tests/conftest.py`). Keep this in mind before assuming a fixture or helper applies repo-wide.
 * Snapshot and golden-output changes (`tests/golden/`) require human inspection and verification via `--golden-update`.
 
 ## Dependency Rules

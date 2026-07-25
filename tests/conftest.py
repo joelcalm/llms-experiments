@@ -1,5 +1,11 @@
 """Shared helpers for the experiment-cli test suite.
 
+Scope note: `tests/` is a single flat directory that holds two distinct test
+suites together: tests for the installed `llms_experiments` package, and the
+subprocess-based tests for the standalone `experiment-cli` script (the ones
+that rely on the fixtures below). This file's fixtures and helpers are scoped
+to the latter.
+
 The runner is a single script rather than an installed package, so tests import
 it by path.  This mirrors how the HTCondor workers invoke it.
 """

@@ -30,6 +30,7 @@ llms-experiments = "llms_experiments.cli:main"
 dev = [
     "pytest>=8.3.2",
     "ruff>=0.9.0",
+    "mypy>=1.13.0",
 ]
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -42,6 +43,22 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 # The runner logs verbosely to its own files; don't mirror it into failures.
 addopts = "--show-capture=no"
+markers = [
+    "unit: fast tests without network, model downloads, or GPUs",
+    "integration: tests exercising output stores, batch roundtrips, and processors",
+    "gpu: GPU-dependent inference tests (opt-in)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+
+# These are optional/CPU-heavy or GPU-only dependencies without bundled type
+# stubs (or, for torch/vllm/llama_cpp, not installed in the default `dev`
+# environment at all). Silence missing-import noise for them rather than
+# adding stub packages or hard runtime dependencies just to satisfy mypy.
+[[tool.mypy.overrides]]
+module = ["pyarrow.*", "yaml.*", "torch.*", "vllm.*", "llama_cpp.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 120

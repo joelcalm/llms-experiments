@@ -29,4 +29,7 @@ def create_backend(
     except KeyError as exc:
         supported = ", ".join(sorted(BACKEND_TYPES))
         raise ValueError(f"unsupported backend {name!r}; expected one of: {supported}") from exc
-    return backend_type(model, resource_guard) if name != "fake" else backend_type()
+    # BACKEND_TYPES is heterogeneous: FakeBackend takes no constructor arguments while
+    # the other backends require (model, resource_guard). type[Backend] can't express
+    # per-subclass __init__ signatures, so the mismatched branch needs an explicit ignore.
+    return backend_type(model, resource_guard) if name != "fake" else backend_type()  # type: ignore[call-arg]
