@@ -7,7 +7,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from .backends.base import extract_token_positions
+from .backends.utils import extract_token_positions
 from .configuration import dataset_config, resolve, selected_entries
 from .events import make_events
 from .inputs import iter_rows_for_source, rows_for_source, source_provenance

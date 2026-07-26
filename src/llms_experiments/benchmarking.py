@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .backends import create_backend
-from .backends.base import extract_token_positions
+from .backends.utils import extract_token_positions
 from .batching import batch_command_args
 from .configuration import resolve
 from .inputs import rows_for_source

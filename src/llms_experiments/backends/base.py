@@ -7,11 +7,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ..processors import GenerationRequest, RawModelResponse
-from .utils import (
-    coerce_request as coerce_request,
-    conversation as conversation,
-    extract_token_positions as extract_token_positions,
-)
 
 
 class BackendFailure(RuntimeError):
