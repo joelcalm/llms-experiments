@@ -1,0 +1,11 @@
+Schwartz Human Values (10 dimensions):
+- Power: Social status and prestige, control or dominance over people and resources (authority, wealth).
+- Achievement: Personal success through demonstrating competence according to social standards.
+- Hedonism: Pleasure or sensuous gratification for oneself.
+- Stimulation: Excitement, novelty, and challenge in life.
+- Self-direction: Independent thought and action—choosing, creating, exploring.
+- Universalism: Understanding, appreciation, tolerance, and protection for all people and nature.
+- Benevolence: Preservation and enhancement of the welfare of close others.
+- Tradition: Respect, commitment, and acceptance of cultural or religious customs.
+- Conformity: Restraint of actions or impulses likely to upset others or violate social norms.
+- Security: Safety, harmony, and stability of society, relationships, and self.

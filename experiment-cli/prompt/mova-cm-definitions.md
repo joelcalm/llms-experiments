@@ -1,0 +1,11 @@
+Common Morality moral rules:
+- Do not kill: Refrain from taking human life.
+- Do not cause pain: Refrain from inflicting physical or psychological pain.
+- Do not disable: Refrain from causing physical or mental disability.
+- Do not deprive of freedom: Refrain from restricting liberty or autonomy.
+- Do not deprive of pleasure: Refrain from taking away enjoyment or satisfaction.
+- Do not deceive: Refrain from lying or misleading others.
+- Do not cheat: Refrain from violating rules for unfair advantage.
+- Do not break your promises: Keep commitments and contracts.
+- Do not break the law: Obey legal statutes.
+- Do your duty: Fulfill professional and role obligations.

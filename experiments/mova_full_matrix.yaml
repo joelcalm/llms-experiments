@@ -1,0 +1,291 @@
+run:
+  id: mova_full_matrix
+  seed: 123
+
+# One model process, independent dataset lanes. Each lane can be
+# overridden from the CLI without copying this file. Label vocabularies and
+# reusable theory/definition fragments are data configuration, not runner
+# logic.
+datasets:
+  - id: mftc
+    input:
+      path: ${DATA_ROOT}/mftc.json
+      format: nested_json
+      id_column: tweet_id
+      text_column: tweet_text
+      records_key: Tweets
+      labels_column: annotations
+      label_value_key: annotation
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
+      binary_question: Does this text express care?
+      prompt_parts: {theory: experiment-cli/prompt/mova-mft-theory.md, definitions: experiment-cli/prompt/mova-mft-definitions.md}
+  - id: mfrc
+    input:
+      path: ${DATA_ROOT}/mfrc.jsonl
+      format: jsonl
+      id_column: item_id
+      text_column: text
+      labels_column: gold_labels
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
+      binary_question: Does this text express care?
+      prompt_parts: {theory: experiment-cli/prompt/mova-mft-theory.md, definitions: experiment-cli/prompt/mova-mft-definitions.md}
+  - id: valueeval
+    input:
+      path: ${DATA_ROOT}/valueeval/arguments-training.tsv
+      labels_path: ${DATA_ROOT}/valueeval/labels-training.tsv
+      format: paired_tsv
+      id_column: Argument ID
+      text_column: Premise
+      additional_pairs:
+        - {path: "${DATA_ROOT}/valueeval/arguments-validation.tsv", labels_path: "${DATA_ROOT}/valueeval/labels-validation.tsv"}
+        - {path: "${DATA_ROOT}/valueeval/arguments-test.tsv", labels_path: "${DATA_ROOT}/valueeval/labels-test.tsv"}
+      labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
+      code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
+      binary_question: Does this text express achievement?
+      prompt_parts: {theory: experiment-cli/prompt/mova-values20-theory.md, definitions: experiment-cli/prompt/mova-values20-definitions.md}
+  - id: protoethos_mft
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: mft, slice: core}
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
+      binary_question: Does this text express authority?
+      prompt_parts: {theory: experiment-cli/prompt/mova-mft-theory.md, definitions: experiment-cli/prompt/mova-mft-definitions.md}
+  - id: protoethos_shvt
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: shvt, slice: core}
+      labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
+      code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
+      binary_question: Does this text express achievement?
+      prompt_parts: {theory: experiment-cli/prompt/mova-values20-theory.md, definitions: experiment-cli/prompt/mova-values20-definitions.md}
+
+  # Full-3M-row protoethos expansion. Rows are shared with protoethos_mft/
+  # protoethos_shvt above by (theory_id, slice) -- `core` is already fully
+  # covered natively by those two lanes; these six add every remaining
+  # native combination plus, for the already-covered `core` rows, an
+  # additional cross-theory scoring pass (same text, opposite label space).
+  # `labels`/`code_labels`/`binary_question`/`prompt_parts` always describe
+  # whichever label space the row is being scored INTO here, not the row's
+  # own `theory_id` -- for the two cross-theory entries that's deliberately
+  # the opposite theory from `where.theory_id`, since a prompt built from
+  # one theory's definitions while forcing a choice among the other
+  # theory's labels would be internally inconsistent.
+  - id: protoethos_mft_transformed
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: mft, slice: transformed}
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
+      binary_question: Does this text express authority?
+      prompt_parts: {theory: experiment-cli/prompt/mova-mft-theory.md, definitions: experiment-cli/prompt/mova-mft-definitions.md}
+  - id: protoethos_shvt_transformed
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: shvt, slice: transformed}
+      labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
+      code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
+      binary_question: Does this text express achievement?
+      prompt_parts: {theory: experiment-cli/prompt/mova-values20-theory.md, definitions: experiment-cli/prompt/mova-values20-definitions.md}
+  - id: protoethos_diagnostic_mft
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: diagnostic, slice: deontic}
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
+      binary_question: Does this text express authority?
+      prompt_parts: {theory: experiment-cli/prompt/mova-mft-theory.md, definitions: experiment-cli/prompt/mova-mft-definitions.md}
+  - id: protoethos_diagnostic_shvt
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: diagnostic, slice: deontic}
+      labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
+      code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
+      binary_question: Does this text express achievement?
+      prompt_parts: {theory: experiment-cli/prompt/mova-values20-theory.md, definitions: experiment-cli/prompt/mova-values20-definitions.md}
+  - id: protoethos_mft_core_cross_shvt
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: mft, slice: core}
+      labels: ["Achievement", "Benevolence: caring", "Benevolence: dependability", "Conformity: interpersonal", "Conformity: rules", "Face", "Hedonism", "Humility", "Power: dominance", "Power: resources", "Security: personal", "Security: societal", "Self-direction: action", "Self-direction: thought", "Stimulation", "Tradition", "Universalism: concern", "Universalism: nature", "Universalism: objectivity", "Universalism: tolerance"]
+      code_labels: {A: "Achievement", B: "Benevolence: caring", C: "Benevolence: dependability", D: "Conformity: interpersonal", E: "Conformity: rules", F: "Face", G: "Hedonism", H: "Humility", I: "Power: dominance", J: "Power: resources", K: "Security: personal", L: "Security: societal", M: "Self-direction: action", N: "Self-direction: thought", O: "Stimulation", P: "Tradition", Q: "Universalism: concern", R: "Universalism: nature", S: "Universalism: objectivity", T: "Universalism: tolerance"}
+      binary_question: Does this text express achievement?
+      prompt_parts: {theory: experiment-cli/prompt/mova-values20-theory.md, definitions: experiment-cli/prompt/mova-values20-definitions.md}
+  - id: protoethos_shvt_core_cross_mft
+    input:
+      path: ${DATA_ROOT}/protoethos.csv
+      format: csv
+      delimiter: ;
+      id_column: id
+      text_column: sentence
+      labels_column: value_id
+      where: {theory_id: shvt, slice: core}
+      labels: [authority, betrayal, care, cheating, degradation, fairness, harm, loyalty, purity, subversion]
+      code_labels: {A: authority, B: betrayal, C: care, D: cheating, E: degradation, F: fairness, G: harm, H: loyalty, I: purity, J: subversion}
+      binary_question: Does this text express authority?
+      prompt_parts: {theory: experiment-cli/prompt/mova-mft-theory.md, definitions: experiment-cli/prompt/mova-mft-definitions.md}
+
+model:
+  name: mistralai/Ministral-3-3B-Instruct-2512
+  backend: local_vllm
+  # Leave CUDA-graph workspace on this 8 GB GPU while still using most VRAM.
+  gpu_memory_utilization: 0.90
+  max_model_len: 2048
+  max_num_seqs: 64
+  enable_prefix_caching: true
+  language_model_only: true
+  # Required by Mistral's vLLM launch contract for this FP8 multimodal model.
+  tokenizer_mode: mistral
+  config_format: mistral
+  load_format: mistral
+  # RTX 50-series (SM 12.x) use the packaged CUTLASS FP8 kernel instead of
+  # FlashInfer's FP8 JIT path.
+  vllm_environment:
+    VLLM_DISABLED_KERNELS: FlashInferFP8ScaledMMLinearKernel
+  synchronize_cuda: false
+  # Use vLLM's default CUDA-graph/compilation path for sustained throughput.
+  # The CPU guard below still reserves four logical CPUs for the desktop.
+
+resources:
+  cpu:
+    # On a 20-logical-CPU laptop this confines vLLM and every child worker to
+    # 16 CPUs, leaving four for the OS.  Set cores: all only for a dedicated
+    # machine, or use an explicit integer for a stricter cap.
+    cores: auto
+    reserve_cores: 4
+    affinity: true
+    # Prevent BLAS, Torch, and tokenizer pools from multiplying inside each
+    # vLLM worker. CPU affinity supplies process-level parallelism instead.
+    thread_pool_size: 1
+
+variants:
+  - id: single_label_json
+    processor:
+      result: single_label
+      stages:
+        - {type: json_decode}
+        - {type: json_schema, schema: experiment-cli/prompt/schema-single-label.json, enum_from: dataset_labels}
+    max_tokens: 64
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+  - id: multi_label_json
+    processor:
+      result: multi_label
+      stages:
+        - {type: json_decode}
+        - {type: json_schema, schema: experiment-cli/prompt/schema-multi-label.json, enum_from: dataset_labels}
+    max_tokens: 96
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+  - id: ordinal_score_json
+    processor:
+      result: ordinal_score
+      stages:
+        - {type: json_decode}
+        - {type: json_schema, schema: experiment-cli/prompt/schema-ordinal-score.json}
+    max_tokens: 64
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-ordinal-score.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+  - id: single_label_code_logits
+    processor:
+      result: categorical_logprobs
+      stages:
+        - {type: candidate_logprobs, candidates_from: code_labels}
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label-code.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
+  - id: independent_yes_no_logits
+    processor:
+      result: fixed_binary_probe
+      stages:
+        - {type: candidate_logprobs, candidates: ["yes", "no"]}
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-yes-no.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
+  # Full-label soft multi-label probe. The fan_out stage fans each
+  # item out into one yes/no question per label; the target-specific question
+  # is placed last so system+context+input form a shared prefix that vLLM's
+  # prefix cache reuses across every label of an item.
+  - id: soft_multi_label_yes_no_logits
+    processor:
+      result: label_yes_no_logprobs
+      stages:
+        - {type: fan_out, over: dataset_labels}
+        - {type: candidate_logprobs, candidates: ["yes", "no"]}
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md, experiment-cli/prompt/task-yes-no-target.md]
+  # One generation yields both the literal two-digit score and its smoother
+  # expectation under the per-position digit logprobs.
+  - id: verbalized_confidence
+    processor:
+      result: single_label_verbalized_confidence
+      stages:
+        - {type: json_decode}
+        - {type: json_schema, schema: experiment-cli/prompt/schema-verbalized-confidence.json, enum_from: dataset_labels}
+        - {type: verbalized_confidence, top_logprobs: 20}
+    max_tokens: 64
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-verbalized-confidence.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+
+batch:
+  mode: auto
+  candidates: [1, 2, 4, 8, 16, 32, 64]
+  warmup_rows: 32
+  min_size: 1
+  on_failure: halve
+
+streaming:
+  enabled: true
+  output_chunk_rows: 4096
+
+validation:
+  enabled: true
+  retry:
+    enabled: true
+    max_attempts: 2
+    # Keep the high-throughput pass free of one-row corrections. Invalid or
+    # truncated responses are logged and retried after it in smaller batches.
+    deferred: true
+    batch_size_divisor: 2
+    max_tokens_multiplier: 2
+    max_tokens_cap: 256
+    correction_prompt: experiment-cli/prompt/retry-structured-output.md
+
+output:
+  directory: results/mova_full_matrix
+  format: parquet
+  include_text: false
+  include_raw_response: true
+
+logging:
+  level: INFO
+  file: results/mova_full_matrix/logs/run.log
+  events: results/mova_full_matrix/logs/events.jsonl

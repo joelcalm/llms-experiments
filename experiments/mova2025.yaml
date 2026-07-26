@@ -1,0 +1,111 @@
+run:
+  id: mova2025
+  seed: 123
+
+datasets:
+  - id: mova_mft
+    input:
+      path: ${MOVA_DATA_ROOT}/demo.csv
+      format: csv
+      id_column: paragraph_id
+      text_column: vtext
+      labels: [care_harm, fairness_cheating, loyalty_betrayal, authority_subversion, sanctity_degradation]
+      code_labels: {A: care_harm, B: fairness_cheating, C: loyalty_betrayal, D: authority_subversion, E: sanctity_degradation}
+      binary_question: "Does this text express Care/Harm?"
+      prompt_parts: {theory: experiment-cli/prompt/mova-mft-theory.md, definitions: experiment-cli/prompt/mova-mft-definitions.md}
+
+  - id: mova_mac
+    input:
+      path: ${MOVA_DATA_ROOT}/demo.csv
+      format: csv
+      id_column: paragraph_id
+      text_column: vtext
+      labels: [family, group, reciprocity, heroism, deference, fairness, property]
+      code_labels: {A: family, B: group, C: reciprocity, D: heroism, E: deference, F: fairness, G: property}
+      binary_question: "Does this text express Family cooperation?"
+      prompt_parts: {theory: experiment-cli/prompt/mova-mac-theory.md, definitions: experiment-cli/prompt/mova-mac-definitions.md}
+
+  - id: mova_values10
+    input:
+      path: ${MOVA_DATA_ROOT}/demo.csv
+      format: csv
+      id_column: paragraph_id
+      text_column: vtext
+      labels: [power, achievement, hedonism, stimulation, self_direction, universalism, benevolence, tradition, conformity, security]
+      code_labels: {A: power, B: achievement, C: hedonism, D: stimulation, E: self_direction, F: universalism, G: benevolence, H: tradition, I: conformity, J: security}
+      binary_question: "Does this text express Power?"
+      prompt_parts: {theory: experiment-cli/prompt/mova-values10-theory.md, definitions: experiment-cli/prompt/mova-values10-definitions.md}
+
+  - id: mova_values20
+    input:
+      path: ${MOVA_DATA_ROOT}/demo.csv
+      format: csv
+      id_column: paragraph_id
+      text_column: vtext
+      labels: [power_dominance, power_resources, power_face, achievement, hedonism, stimulation, self_direction_thought, self_direction_action, universalism_concern, universalism_nature, universalism_tolerance, universalism_objectivity, benevolence_caring, benevolence_dependability, tradition, humility, conformity_rules, conformity_interpersonal, security_personal, security_societal]
+      code_labels: {A: power_dominance, B: power_resources, C: power_face, D: achievement, E: hedonism, F: stimulation, G: self_direction_thought, H: self_direction_action, I: universalism_concern, J: universalism_nature, K: universalism_tolerance, L: universalism_objectivity, M: benevolence_caring, N: benevolence_dependability, O: tradition, P: humility, Q: conformity_rules, R: conformity_interpersonal, S: security_personal, T: security_societal}
+      binary_question: "Does this text express Power Dominance?"
+      prompt_parts: {theory: experiment-cli/prompt/mova-values20-theory.md, definitions: experiment-cli/prompt/mova-values20-definitions.md}
+
+  - id: mova_common_morality
+    input:
+      path: ${MOVA_DATA_ROOT}/demo.csv
+      format: csv
+      id_column: paragraph_id
+      text_column: vtext
+      labels: [do_not_kill, do_not_cause_pain, do_not_disable, do_not_deprive_of_freedom, do_not_deprive_of_pleasure, do_not_deceive, do_not_cheat, do_not_break_promises, do_not_break_law, do_duty]
+      code_labels: {A: do_not_kill, B: do_not_cause_pain, C: do_not_disable, D: do_not_deprive_of_freedom, E: do_not_deprive_of_pleasure, F: do_not_deceive, G: do_not_cheat, H: do_not_break_promises, I: do_not_break_law, J: do_duty}
+      binary_question: "Does this text describe an action violating the rule Do not kill?"
+      prompt_parts: {theory: experiment-cli/prompt/mova-cm-theory.md, definitions: experiment-cli/prompt/mova-cm-definitions.md}
+
+model:
+  name: Qwen/Qwen3.5-2B
+  backend: local_vllm
+
+resources:
+  cpu:
+    cores: auto
+    reserve_cores: 1
+    affinity: false
+    thread_pool_size: 1
+
+variants:
+  - id: single_label_json
+    processor:
+      result: single_label
+      stages:
+        - {type: json_decode}
+        - {type: json_schema, schema: experiment-cli/prompt/schema-single-label.json, enum_from: dataset_labels}
+    max_tokens: 32
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+
+  - id: multi_label_json
+    processor:
+      result: multi_label
+      stages:
+        - {type: json_decode}
+        - {type: json_schema, schema: experiment-cli/prompt/schema-multi-label.json, enum_from: dataset_labels}
+    max_tokens: 48
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-multi-label.md, experiment-cli/prompt/output-json.md, experiment-cli/prompt/input.md]
+
+  - id: single_label_code_logits
+    processor:
+      result: categorical_logprobs
+      stages:
+        - {type: candidate_logprobs, candidates_from: code_labels}
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/task-single-label-code.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md]
+
+  - id: soft_multi_label_yes_no_logits
+    processor:
+      result: label_yes_no_logprobs
+      stages:
+        - {type: fan_out, over: dataset_labels}
+        - {type: candidate_logprobs, candidates: ["yes", "no"]}
+    prompts: [experiment-cli/prompt/system.md, experiment-cli/prompt/context.md, experiment-cli/prompt/candidate-answer.md, experiment-cli/prompt/input.md, experiment-cli/prompt/task-yes-no-target.md]
+
+batch:
+  mode: fixed
+  size: 4
+
+output:
+  directory: results/mova2025

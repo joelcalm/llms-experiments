@@ -1,0 +1,21 @@
+Schwartz Human Values (20 subcategories):
+- Power - dominance: Influence, commanding hierarchy.
+- Power - resources: Wealth, material possessions.
+- Power - face: Social recognition, reputation.
+- Achievement: Ambition, success, capability, courage.
+- Hedonism: Pleasure, fun, sensuous gratification.
+- Stimulation: Exciting life, varied life, risk-taking.
+- Self-direction - thought: Creativity, curiosity, freedom of thought.
+- Self-direction - action: Choosing goals, independence, privacy.
+- Universalism - concern: Equality, justice, peace.
+- Universalism - nature: Environmental protection, harmony with nature.
+- Universalism - tolerance: Broadmindedness, accepting differences.
+- Universalism - objectivity: Rational thinking, unbiased perspectives.
+- Benevolence - caring: Helpful, honest, forgiving, loving.
+- Benevolence - dependability: Responsibility, loyalty to friends.
+- Tradition: Respecting traditions, religious faith.
+- Humility: Humble, accepting life as is.
+- Conformity - rules: Compliance, self-discipline, proper behavior.
+- Conformity - interpersonal: Politeness, honoring elders.
+- Security - personal: Belonging, health, tidy, comfortable life.
+- Security - societal: Safe country, stable society.
