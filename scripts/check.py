@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def run_step(name: str, command: list[str]) -> bool:
     print(f"=== [Step] {name} ===")
     print(f"Executing: {' '.join(command)}")
-    result = subprocess.run(command, cwd=ROOT, check=False)
+    env = dict(sys.modules["os"].environ)
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    result = subprocess.run(command, cwd=ROOT, env=env, check=False)
     if result.returncode != 0:
         print(f"FAILED: {name} exited with code {result.returncode}\n")
         return False
