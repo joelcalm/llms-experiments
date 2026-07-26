@@ -9,7 +9,21 @@ from typing import Any
 
 from .base import ProcessingStage, Processor
 from .contracts import ProcessorContext
-from .stages import STAGE_TYPES
+from .implementations.candidate_logprobs import CandidateLogprobsStage
+from .implementations.fan_out import FanOutStage
+from .implementations.identity import IdentityStage
+from .implementations.json_decode import JsonDecodeStage
+from .implementations.json_schema import JsonSchemaStage
+from .implementations.verbalized_confidence import VerbalizedConfidenceStage
+
+STAGE_TYPES: dict[str, type[ProcessingStage]] = {
+    "identity": IdentityStage,
+    "fan_out": FanOutStage,
+    "json_decode": JsonDecodeStage,
+    "json_schema": JsonSchemaStage,
+    "candidate_logprobs": CandidateLogprobsStage,
+    "verbalized_confidence": VerbalizedConfidenceStage,
+}
 
 LEGACY_PROCESSOR_FIELDS = ("request_mode", "result_type", "expand_over")
 
@@ -24,7 +38,6 @@ class LegacyConfigurationWarning(UserWarning):
 
 def create_stage(specification: Mapping[str, Any]) -> ProcessingStage:
     """Create one stage from its explicit type mapping."""
-
     if not isinstance(specification, Mapping):
         raise ValueError("every processor stage must be a mapping")
     stage_type = str(specification.get("type", ""))
@@ -42,7 +55,6 @@ def create_processor(
     code_labels: Mapping[str, str] | None = None,
 ) -> Processor:
     """Build and validate one YAML-defined processor pipeline."""
-
     for name in LEGACY_PROCESSOR_FIELDS:
         if name in variant:
             warnings.warn(
@@ -81,5 +93,4 @@ def create_processor(
 
 def processor_config_hash_material(variant: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return behavior-defining processor configuration fields for config hashing."""
-
     return {key: value for key, value in variant.items() if key not in LEGACY_PROCESSOR_FIELDS}

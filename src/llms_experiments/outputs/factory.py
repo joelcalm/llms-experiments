@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from .base import AtomicPartWriter, OutputStore
-from .csv import CsvOutputStore
-from .jsonl import JsonLinesOutputStore
-from .parquet import ParquetOutputStore
+from .implementations.csv import CsvOutputStore
+from .implementations.jsonl import JsonLinesOutputStore
+from .implementations.parquet import ParquetOutputStore
 
 OUTPUT_STORE_TYPES: dict[str, type[OutputStore]] = {
     "parquet": ParquetOutputStore,
@@ -19,6 +19,7 @@ OUTPUT_STORE_TYPES: dict[str, type[OutputStore]] = {
 
 
 def create_output_store(output: Mapping[str, Any], run_dir: str | Path | None = None) -> OutputStore:
+    """Build the concrete OutputStore declared by output configuration."""
     name = str(output.get("format", "parquet"))
     try:
         store_type = OUTPUT_STORE_TYPES[name]
@@ -30,6 +31,7 @@ def create_output_store(output: Mapping[str, Any], run_dir: str | Path | None = 
 
 
 def create_output_store_for_path(path: Path) -> OutputStore:
+    """Infer and build concrete OutputStore from a file path extension."""
     suffix = path.suffix.lower().lstrip(".")
     try:
         store_type = OUTPUT_STORE_TYPES[suffix]
@@ -44,6 +46,7 @@ class PartWriter(AtomicPartWriter):
     """Backward-compatible Parquet part writer."""
 
     def __init__(self, run_dir: Path, variant_id: str, target_rows: int = 4096) -> None:
+        """Initialize part writer using default Parquet output store."""
         super().__init__(ParquetOutputStore(run_dir), variant_id, target_rows)
 
 
@@ -52,4 +55,5 @@ def merge_parts(
     expected_hashes: Mapping[str, str] | None = None,
     retried_keys: set[tuple[str, str, int]] | None = None,
 ) -> int:
+    """Finalize and merge partition parts into canonical result files."""
     return ParquetOutputStore(run_dir).finalize(expected_hashes, retried_keys)

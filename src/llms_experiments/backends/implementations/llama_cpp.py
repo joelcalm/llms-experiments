@@ -6,12 +6,16 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..processors import GenerationRequest, RawModelResponse
-from .base import Backend, coerce_request, conversation, extract_token_positions
+from ...processors import GenerationRequest, RawModelResponse
+from ..base import Backend
+from ..utils import coerce_request, conversation, extract_token_positions
 
 
 class LlamaCppBackend(Backend):
+    """Local backend implementation backed by llama-cpp-python."""
+
     def __init__(self, model: Mapping[str, Any], resource_guard: Mapping[str, Any] | None = None) -> None:
+        """Initialize llama_cpp model runtime and context settings."""
         del resource_guard
         try:
             import llama_cpp
@@ -34,6 +38,7 @@ class LlamaCppBackend(Backend):
         )
 
     def _generate_one(self, prompt: str, plan: GenerationRequest) -> RawModelResponse:
+        """Execute chat completion for a single prompt using llama_cpp."""
         requirements = plan.requirements
         kwargs: dict[str, Any] = {
             "messages": conversation(plan.system_prompt, prompt),
@@ -62,10 +67,12 @@ class LlamaCppBackend(Backend):
         prompts: Sequence[str],
         request: GenerationRequest | Mapping[str, Any],
     ) -> list[RawModelResponse]:
+        """Generate responses for multiple input prompts."""
         plan = coerce_request(request)
         return [self._generate_one(prompt, plan) for prompt in prompts]
 
     def close(self) -> None:
+        """Release underlying llama_cpp instance resources."""
         if getattr(self, "llm", None) is not None:
             del self.llm
             self.llm = None

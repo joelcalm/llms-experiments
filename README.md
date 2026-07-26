@@ -10,6 +10,33 @@
 
 This package executes inference runs and records durable predictions according to the versioned result contract 2.0.
 
+For a maintainer-oriented explanation of the repository, its run lifecycle, and
+where to make changes, see [Getting started](docs/getting-started.md).
+
+## Repository at a glance
+
+This is an inference and experiment-execution framework, not a model-training
+repository. A YAML configuration selects the input data, model backend, prompt
+templates, processor stages, runtime controls, and output format. A run reads
+normalized rows, renders prompts, sends backend-neutral generation requests,
+turns raw model responses into semantic results, and writes the results through
+the common Result Contract 2.0.
+
+The main boundaries are deliberately independent:
+
+- `inputs/` reads source data and assigns stable source positions.
+- `backends/` transports requests through vLLM, llama.cpp,
+  OpenAI-compatible endpoints, or the deterministic `fake` backend.
+- `processors/` owns semantic behavior such as JSON parsing, schema validation,
+  label fan-out, candidate log probabilities, and confidence enrichment.
+- `outputs/` writes Parquet, CSV, or JSONL, with atomic parts and SQLite-backed
+  resume state.
+- `orchestration.py` coordinates batching, retries, resuming, and matrix runs.
+
+Backends only return raw model evidence; processors interpret that evidence.
+Consequently, the same processor pipeline is used for local inference and
+external batch response parsing.
+
 ---
 
 ## Key Features

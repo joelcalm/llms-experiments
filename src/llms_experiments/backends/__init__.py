@@ -1,12 +1,14 @@
 """Pluggable inference backends."""
 
 from ..processors import GenerationRequest, RawModelResponse
+from .backends import (
+    FakeBackend,
+    LlamaCppBackend,
+    OpenAICompatibleBackend,
+    VLLMBackend,
+)
 from .base import Backend, BackendFailure
 from .factory import BACKEND_TYPES, create_backend
-from .fake import FakeBackend
-from .llama_cpp import LlamaCppBackend
-from .openai_compatible import OpenAICompatibleBackend
-from .vllm import VLLMBackend
 
 make_backend = create_backend
 Response = RawModelResponse

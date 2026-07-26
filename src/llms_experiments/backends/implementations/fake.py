@@ -1,4 +1,4 @@
-"""Deterministic backend used by the CPU-only test suite."""
+"""Deterministic fake backend used by CPU-only test suites."""
 
 from __future__ import annotations
 
@@ -6,16 +6,20 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..processors import GenerationRequest, RawModelResponse, TokenCandidate, TokenPosition
-from .base import Backend, coerce_request
+from ...processors import GenerationRequest, RawModelResponse, TokenCandidate, TokenPosition
+from ..base import Backend
+from ..utils import coerce_request
 
 
 class FakeBackend(Backend):
+    """Deterministic mock backend implementation for lightweight testing."""
+
     def generate(
         self,
         prompts: Sequence[str],
         request: GenerationRequest | Mapping[str, Any],
     ) -> list[RawModelResponse]:
+        """Generate mock model responses matching the requested generation plan."""
         plan = coerce_request(request)
         requirements = plan.requirements
         if requirements.one_token:

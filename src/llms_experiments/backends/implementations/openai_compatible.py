@@ -8,12 +8,16 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from ..processors import GenerationRequest, RawModelResponse
-from .base import Backend, coerce_request, conversation, extract_token_positions
+from ...processors import GenerationRequest, RawModelResponse
+from ..base import Backend
+from ..utils import coerce_request, conversation, extract_token_positions
 
 
 class OpenAICompatibleBackend(Backend):
+    """HTTP client backend targeting OpenAI-compatible API endpoints."""
+
     def __init__(self, model: Mapping[str, Any], resource_guard: Mapping[str, Any] | None = None) -> None:
+        """Initialize HTTP connection parameters and API request options."""
         del resource_guard
         try:
             import requests
@@ -36,6 +40,7 @@ class OpenAICompatibleBackend(Backend):
         self.chat_template_kwargs = dict(template_kwargs)
 
     def _generate_one(self, prompt: str, plan: GenerationRequest) -> RawModelResponse:
+        """Issue HTTP request for a single prompt with retry logic."""
         requirements = plan.requirements
         payload: dict[str, Any] = {
             "model": self.model["name"],
@@ -84,6 +89,7 @@ class OpenAICompatibleBackend(Backend):
         prompts: Sequence[str],
         request: GenerationRequest | Mapping[str, Any],
     ) -> list[RawModelResponse]:
+        """Concurrently generate responses across input prompts via thread pool."""
         plan = coerce_request(request)
         with ThreadPoolExecutor(max_workers=min(self.concurrency, len(prompts))) as executor:
             return list(executor.map(lambda prompt: self._generate_one(prompt, plan), prompts))

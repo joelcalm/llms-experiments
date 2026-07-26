@@ -9,14 +9,54 @@ The default installation has no CUDA dependency and is sufficient for config
 validation, the fake backend, external-batch preparation/parsing, and tests:
 
 ```bash
-python -m pip install .
-llms-experiments validate experiments/matrix_smoke.yaml
-llms-experiments run experiments/matrix_smoke.yaml --backend fake --rows 2
+uv sync --all-groups
+uv run llms-experiments validate experiments/matrix_smoke.yaml
+uv run llms-experiments run experiments/matrix_smoke.yaml --backend fake --rows 2
 ```
 
 The fake backend makes deterministic responses, so this check does not need a
-model, GPU, endpoint, or API key. Use `llms-experiments doctor` to inspect the
-local package and GPU/driver visibility.
+model, GPU, endpoint, or API key. Use `uv run llms-experiments doctor` to
+inspect the local package and GPU/driver visibility.
+
+## Repository overview
+
+This repository is an inference and experiment-execution framework, not a
+model-training repository. The configuration describes the complete run:
+input data, model backend, Markdown prompt templates, processor stages,
+resource and retry controls, and output format.
+
+The run lifecycle is:
+
+```text
+YAML configuration
+  -> input reader and normalized rows
+  -> prompt rendering and processor preparation
+  -> backend generation
+  -> semantic result processing
+  -> durable Parquet, CSV, or JSONL output
+```
+
+The four main concerns are independent:
+
+1. **Input readers** load CSV, TSV, JSONL, Parquet, nested JSON, or paired TSV
+   data and preserve a deterministic `_source_position`.
+2. **Backends** execute requests through vLLM, llama.cpp,
+   OpenAI-compatible endpoints, or the deterministic `fake` backend. They
+   return raw text and token evidence; they do not interpret labels.
+3. **Processors** own semantic interpretation: parsing, schema validation,
+   fan-out, candidate log probabilities, confidence extraction, and result
+   construction.
+4. **Output stores** write the common Result Contract 2.0 to Parquet, CSV, or
+   JSONL, including atomic parts and SQLite-backed resume state.
+
+The same processor is used by in-process inference and external batch parsing.
+This is the key design rule to preserve when extending the system: backend
+transport and result semantics must remain separate.
+
+Every run records a manifest, effective configuration, provenance hashes, row
+statuses, and resource diagnostics. Interrupted runs can resume from durable
+rows without duplicating result identities. Generated outputs and model
+artifacts should not be committed to Git.
 
 ## 2. Understand one run
 
@@ -96,7 +136,7 @@ strategies. Run the full CPU-only checks before committing:
 uv run ruff check .
 uv run ruff format --check .
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q
-python -m build
+uv run python -m build
 ```
 
 For the full contracts and strategy details, continue to [Architecture](architecture.md),

@@ -4,39 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-
-def split_labels(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(item) for item in value if str(item)]
-    if isinstance(value, str):
-        try:
-            decoded = json.loads(value)
-            if isinstance(decoded, list):
-                return [str(item) for item in decoded if str(item)]
-        except json.JSONDecodeError:
-            pass
-        return [item.strip() for item in value.split(",") if item.strip()]
-    return [str(value)]
-
-
-def _slugify(label: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
-
-
-def normalize_gold_labels(raw: list[str], canonical: list[str] | None) -> list[str]:
-    if not canonical:
-        return raw
-    canonical_set = set(canonical)
-    lookup = {_slugify(label): label for label in canonical}
-    return [label if label in canonical_set else lookup.get(_slugify(label), label) for label in raw]
+from .utils import normalize_gold_labels, split_labels
 
 
 class InputReader(ABC):
@@ -45,20 +18,24 @@ class InputReader(ABC):
     format_name: str
 
     def __init__(self, source: Mapping[str, Any], root: str | Path) -> None:
+        """Store the declared source configuration and validate it up front."""
         self.source = dict(source)
         self.root = Path(root)
         self.validate()
 
     @property
     def path(self) -> Path:
+        """Resolve the configured input path against the reader root."""
         path = Path(str(self.source["path"]))
         return path if path.is_absolute() else self.root / path
 
     def resolve(self, value: str | Path) -> Path:
+        """Resolve a secondary configured path against the reader root."""
         path = Path(value)
         return path if path.is_absolute() else self.root / path
 
     def validate(self) -> None:
+        """Reject incomplete reader declarations before any file access occurs."""
         for key in ("path", "format", "id_column", "text_column"):
             if not self.source.get(key):
                 raise ValueError(f"input.{key} is required")
@@ -68,9 +45,11 @@ class InputReader(ABC):
         """Yield normalized rows without changing their deterministic identities."""
 
     def read_rows(self, limit: int | None = None) -> list[dict[str, Any]]:
+        """Materialize all normalized rows into a list."""
         return list(self.iter_rows(limit))
 
     def normalize(self, row: Mapping[str, Any], position: int) -> dict[str, Any]:
+        """Attach stable bookkeeping fields and normalize any gold labels."""
         normalized = dict(row)
         id_column = str(self.source["id_column"])
         text_column = str(self.source["text_column"])
@@ -85,6 +64,7 @@ class InputReader(ABC):
         return normalized
 
     def effective_limit(self, limit: int | None) -> int | None:
+        """Use the explicit limit when present, otherwise the configured default."""
         value = limit if limit is not None else self.source.get("limit")
         if value is None:
             return None
@@ -94,9 +74,11 @@ class InputReader(ABC):
         return parsed
 
     def provenance_paths(self) -> list[Path]:
+        """Return the files that define this reader's provenance."""
         return [self.path]
 
     def provenance(self) -> dict[str, Any]:
+        """Summarize the input files into a stable provenance fingerprint."""
         records = []
         for path in self.provenance_paths():
             stat = path.stat()

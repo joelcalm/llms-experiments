@@ -6,13 +6,17 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..processors import GenerationRequest, RawModelResponse, TokenCandidate, TokenPosition
-from ..runtime import configure_torch_cpu_threads, configure_vllm_environment, gpu
-from .base import Backend, BackendFailure, coerce_request, conversation
+from ...processors import GenerationRequest, RawModelResponse, TokenCandidate, TokenPosition
+from ...runtime import configure_torch_cpu_threads, configure_vllm_environment, gpu
+from ..base import Backend, BackendFailure
+from ..utils import coerce_request, conversation
 
 
 class VLLMBackend(Backend):
+    """High-throughput in-process GPU backend powered by vLLM."""
+
     def __init__(self, model: Mapping[str, Any], resource_guard: Mapping[str, Any] | None = None) -> None:
+        """Verify GPU availability and initialize vLLM engine instance."""
         if not gpu().get("available"):
             raise RuntimeError(
                 "GPU preflight failed: nvidia-smi cannot communicate with an NVIDIA driver. "
@@ -72,6 +76,7 @@ class VLLMBackend(Backend):
         prompts: Sequence[str],
         request: GenerationRequest | Mapping[str, Any],
     ) -> list[RawModelResponse]:
+        """Execute batched inference through vLLM engine."""
         plan = coerce_request(request)
         requirements = plan.requirements
         kwargs: dict[str, Any] = {"temperature": 0, "max_tokens": requirements.max_tokens}
@@ -128,6 +133,7 @@ class VLLMBackend(Backend):
         return responses
 
     def close(self) -> None:
+        """Shut down vLLM engine instance and release GPU memory resources."""
         try:
             self.llm.llm_engine.engine_core.shutdown()
         except Exception:

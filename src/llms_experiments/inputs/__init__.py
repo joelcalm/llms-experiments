@@ -1,6 +1,6 @@
 """Pluggable normalized dataset readers."""
 
-from .base import InputReader, normalize_gold_labels, split_labels
+from .base import InputReader
 from .factory import (
     INPUT_READER_TYPES,
     create_input_reader,
@@ -17,6 +17,7 @@ from .readers import (
     ParquetInputReader,
     TsvInputReader,
 )
+from .utils import normalize_gold_labels, split_labels
 
 __all__ = [
     "INPUT_READER_TYPES",
