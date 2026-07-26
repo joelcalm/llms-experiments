@@ -42,7 +42,7 @@ where = ["src"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 # The runner logs verbosely to its own files; don't mirror it into failures.
-addopts = "--show-capture=no"
+addopts = "-p no:anyio -p no:cov -p no:asyncio -p no:hydra --show-capture=no"
 markers = [
     "unit: fast tests without network, model downloads, or GPUs",
     "integration: tests exercising output stores, batch roundtrips, and processors",

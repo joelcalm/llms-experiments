@@ -26,10 +26,10 @@ def run_step(name: str, command: list[str]) -> bool:
 def main() -> None:
     print(f"Starting compliance check for llms-experiments at {ROOT}...\n")
     steps = [
-        ("Ruff Format Check", [sys.executable, "-m", "ruff", "format", "--check", "."]),
-        ("Ruff Lint Check", [sys.executable, "-m", "ruff", "check", "."]),
-        ("Mypy Type Check", [sys.executable, "-m", "mypy", "src"]),
-        ("Pytest Test Suite", [sys.executable, "-m", "pytest"]),
+        ("Ruff Format Check", ["uv", "run", "ruff", "format", "--check", "."]),
+        ("Ruff Lint Check", ["uv", "run", "ruff", "check", "."]),
+        ("Mypy Type Check", ["uv", "run", "mypy", "src"]),
+        ("Pytest Test Suite", ["uv", "run", "pytest"]),
     ]
 
     failed = []
