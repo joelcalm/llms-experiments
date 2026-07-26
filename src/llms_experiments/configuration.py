@@ -43,7 +43,17 @@ def load_config(path: str | Path, overrides: list[str] | None = None, *, check_f
     if not isinstance(config, dict):
         raise ValueError("Experiment configuration must be a YAML mapping")
     config = deepcopy(config)
-    config["_root"] = str(path.parent.parent if path.parent.name in {"config", "experiments"} else path.parent)
+    configured_root = config.get("config_root")
+    if configured_root is not None and not isinstance(configured_root, str):
+        raise ValueError("config_root must be a relative path string")
+    if configured_root is not None:
+        root_path = Path(os.path.expandvars(configured_root))
+        if root_path.is_absolute():
+            raise ValueError("config_root must be a relative path string")
+        root = (path.parent / root_path).resolve()
+    else:
+        root = path.parent.parent if path.parent.name in {"config", "experiments"} else path.parent
+    config["_root"] = str(root)
     override_keys: list[str] = []
     for item in overrides or []:
         if "=" not in item:

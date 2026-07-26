@@ -134,6 +134,25 @@ def test_load_config_applies_dotted_overrides(tmp_path: Path) -> None:
     assert loaded["run"]["id"] == "changed"
 
 
+def test_load_config_uses_explicit_config_root(tmp_path: Path) -> None:
+    config_dir = tmp_path / "configs" / "paper"
+    config_dir.mkdir(parents=True)
+    config = config_dir / "run.yaml"
+    config.write_text(
+        """
+config_root: ../..
+run: {id: rooted}
+input: {path: input.jsonl, format: jsonl, id_column: id, text_column: text}
+model: {name: fake, backend: fake}
+variants: [{id: raw, prompts: [prompt.md]}]
+output: {directory: output}
+""",
+        encoding="utf-8",
+    )
+    loaded = cli.load_config(config, check_files=False)
+    assert Path(loaded["_root"]) == tmp_path
+
+
 def test_load_config_rejects_override_without_equals(tmp_path: Path) -> None:
     config = _write_minimal_config(tmp_path)
     with pytest.raises(ValueError, match="KEY=VALUE"):

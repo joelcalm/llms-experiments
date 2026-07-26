@@ -5,6 +5,18 @@ One YAML file describes one run. `${ENV_VAR}` references and dotted
 are `run`, `model`, `variants`, `output`, and exactly one of `input` or
 `datasets`.
 
+By default, relative asset, input, log, and output paths are resolved from the
+configuration's directory (or the repository root for files directly under
+`config/` or `experiments/`). A nested configuration can set an explicit
+relative `config_root`, resolved from the YAML file itself:
+
+```yaml
+config_root: ../..
+```
+
+This keeps a self-contained configuration family under a subdirectory while
+sharing repository-level prompt assets and the usual `results/` location.
+
 ## Inputs and backends
 
 An input requires `path`, `format`, `id_column`, and `text_column`. Supported

@@ -97,6 +97,10 @@ model download.
 
 The typed configuration models reside in `llms_experiments.config`; the generated [JSON Schema](docs/config.schema.json) supports editors and external tooling. See [configuration.md](docs/configuration.md) for the complete contract.
 
+Paper-specific run definitions are isolated under
+[`configs/protoethos/`](configs/protoethos/); generic smoke and example
+configurations remain under `experiments/`.
+
 ---
 
 ## Efficiency and Durability

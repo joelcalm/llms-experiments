@@ -5,8 +5,8 @@ from llms_experiments.orchestration import run_matrix
 
 
 def test_mova2025_config_validation():
-    config_path = Path("experiments/mova2025.yaml")
-    assert config_path.exists(), "experiments/mova2025.yaml must exist"
+    config_path = Path("configs/protoethos/mova2025.yaml")
+    assert config_path.exists(), "configs/protoethos/mova2025.yaml must exist"
     config = load_config(config_path, check_files=False)
     validate_config(config, check_files=False)
     assert config["run"]["id"] == "mova2025"
@@ -14,7 +14,7 @@ def test_mova2025_config_validation():
 
 
 def test_mova2025_dataset_ids_and_prompt_assets():
-    config_path = Path("experiments/mova2025.yaml")
+    config_path = Path("configs/protoethos/mova2025.yaml")
     config = load_config(config_path, check_files=False)
     expected_ids = {"mova_mft", "mova_mac", "mova_values10", "mova_values20", "mova_common_morality"}
     dataset_ids = {ds["id"] for ds in config["datasets"]}
@@ -29,14 +29,14 @@ def test_mova2025_dataset_ids_and_prompt_assets():
 
 
 def test_mova_full_matrix_config_validation():
-    config = load_config("experiments/mova_full_matrix.yaml", check_files=False)
+    config = load_config("configs/protoethos/mova_full_matrix.yaml", check_files=False)
     validate_config(config, check_files=False)
     assert config["run"]["id"] == "mova_full_matrix"
     assert len(config["datasets"]) == 11
 
 
 def test_mova2025_run_smoke(tmp_path):
-    config_path = Path("experiments/mova2025.yaml")
+    config_path = Path("configs/protoethos/mova2025.yaml")
     data_path = tmp_path / "demo.csv"
     data_path.write_text("paragraph_id,vtext\nexample,Helping a neighbour is good.\n", encoding="utf-8")
     output_dir = tmp_path / "mova2025_results"

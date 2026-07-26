@@ -1,3 +1,5 @@
+config_root: ../..
+
 run:
   id: mova2025
   seed: 123

@@ -4,6 +4,7 @@ include CONTRIBUTING.md
 include SECURITY.md
 recursive-include docs *.md *.json
 recursive-include experiments *.yaml
+recursive-include configs *.yaml *.md *.sub *.sh
 recursive-include experiment-cli *.py *.md *.json *.jsonl *.tsv *.csv
 prune experiment-cli/outputs
 prune experiment-cli/logs
