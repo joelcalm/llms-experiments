@@ -67,66 +67,27 @@ YAML configuration, prompt assets, input provenance, and output contract
 together makes a run reviewable and repeatable, rather than an ad-hoc script
 or notebook invocation.
 
-### What an experiment does
+### What an experiment is
 
 An experiment reads one or more structured input rows. A row normally contains
 an identifier and a text field; it may also carry labels and other source
-metadata. For a corpus of action-associated sentences, the text field can hold
-a sentence such as $CE_{X:a}$. The framework does not assign a special meaning
-to that notation: it preserves the source identity and passes the configured
-text and metadata to the prompt renderer.
+metadata. The text field contains the sentence that the experiment processes;
+the framework preserves its source identity and passes the configured text and
+metadata to the prompt renderer.
 
-For each row and configured variant, the runner renders the prompt, asks the
-selected LLM backend for the evidence required by the processor, and writes a
-semantic result. A processor can, for example, validate a JSON label, score
-candidate tokens, or make one yes/no score per target label.
+For each row and configured variant, the LLM executes the configured rendered
+prompt and the runner writes a semantic result. The processor declares the
+response evidence it needs and interprets it; it can, for example, validate a
+JSON label, score candidate tokens, or make one yes/no score per target label.
 
 ### Define a concrete experiment
 
 Define a run in YAML and keep prompt templates in external Markdown files. The
-following complete, runnable example is available as
-[matrix_smoke.yaml](../experiments/matrix_smoke.yaml). It uses the deterministic
-`fake` backend and exercises multiple input formats and processor strategies:
-
-```yaml
-run:
-  id: example_single_label
-  seed: 123
-
-input:
-  path: data/actions.jsonl
-  format: jsonl
-  id_column: id
-  text_column: sentence
-  labels: [care, harm]
-
-model:
-  name: fake
-  backend: fake
-
-variants:
-  - id: classify_action_sentence
-    max_tokens: 32
-    prompts:
-      - prompts/system.md
-      - prompts/classify-action.md
-      - prompts/input.md
-    processor:
-      result: single_label
-      stages:
-        - type: json_decode
-        - type: json_schema
-          schema: schemas/single-label.json
-          enum_from: dataset_labels
-
-output:
-  directory: results/example_single_label
-  format: parquet
-```
-
-The referenced prompt files and JSON schema are experiment assets: create them
-for a new configuration, or start from the paths used by the checked-in smoke
-example. Validate before running:
+complete, runnable [matrix_smoke.yaml](../experiments/matrix_smoke.yaml) is the
+recommended example. It defines four dataset lanes, six variants, prompt
+assets, processor stages, batching and retry policies, and output locations;
+it uses the deterministic `fake` backend so it needs no downloaded model or
+API credentials. Validate and run it with:
 
 ```bash
 uv run llms-experiments validate experiments/matrix_smoke.yaml
@@ -143,23 +104,57 @@ uv run llms-experiments run experiments/matrix_smoke.yaml --backend fake --rows 
 6. **Writer** durably publishes Parquet, CSV, or JSONL parts and final projections.
 7. **Batching and retries** bound resource use, tune or fix batch sizes, and resume safely after interruption.
 
-## 3. Understand one run
+## 3. Follow one sentence through a run
 
-There are four independent concerns:
+The following sequence is the whole process. It is also the boundary map for
+the repository: each numbered responsibility is deliberately independent of
+the others.
 
-1. An **input reader** turns CSV, TSV, JSONL, Parquet, nested JSON, or paired
-   TSV data into normalized rows with a stable `_source_position`.
-2. A **processor** prepares rows, declares the evidence it needs, and converts
-   each raw response into a semantic `ProcessedResult`.
-3. A **backend** executes the compiled `GenerationRequest` and returns
-   backend-neutral text/token evidence. It does not parse labels or calculate
-   confidence.
-4. An **output store** writes the common result contract to Parquet, CSV, or
-   JSONL, including atomic parts and SQLite-backed resume state.
+```text
+experiment YAML + Markdown prompts
+  -> configuration validation and effective configuration
+  -> input reader normalizes a source sentence
+  -> processor prepares a request row and declares requirements
+  -> prompt renderer builds the request
+  -> backend returns raw model evidence
+  -> processor validates/interprets that evidence
+  -> output writer durably publishes Result Contract 2.0 rows
+```
 
-The runner wires these concerns together; a matrix run reuses one backend while
-executing each configured dataset lane and variant. The same processor is used
-for local inference and external batch response parsing.
+1. **Process the YAML file.** `configuration.py` loads the experiment,
+   resolves environment references and command-line overrides, validates the
+   typed configuration, and selects each dataset lane and variant. The
+   effective configuration and its hash are recorded in the run manifest.
+2. **Read input.** An input reader turns CSV, TSV, JSONL, Parquet, nested JSON,
+   or paired TSV into normalized rows. Each sentence retains its input ID and
+   receives a deterministic `_source_position`, so it can be traced through a
+   resumed run.
+3. **Prepare with the processor.** The processor may preserve a row as-is or
+   fan it out over labels. It then compiles the ordered processing stages and
+   declares one backend-neutral `GenerationRequest`—for example, plain text,
+   constrained JSON, or candidate-token log probabilities.
+4. **Render prompts and call the backend.** Markdown prompt assets are rendered
+   with the normalized row and variant context. The selected backend (vLLM,
+   llama.cpp, OpenAI-compatible endpoint, or `fake`) receives the prompt and
+   request. Its only responsibility is to return raw text, token evidence,
+   timing, and transport errors.
+5. **Interpret the response.** The processor converts the raw response into a
+   semantic result. Its stages can decode JSON, validate a schema, aggregate
+   candidate scores, or enrich confidence. This is why backends never parse
+   labels and processors never depend on a particular model transport.
+6. **Write output.** The output store writes Result Contract 2.0 rows to
+   Parquet, CSV, or JSONL. It first publishes append-only parts atomically,
+   then commits resume identities to SQLite and produces combined and
+   per-variant result files. The manifest records provenance, configuration,
+   model, status, and resource diagnostics.
+7. **Batch, retry, and resume.** Orchestration bounds memory with streaming,
+   runs fixed or adaptive batches, retries configured transient/validation
+   cases, and resumes only from matching durable rows. Matrix runs repeat the
+   same flow for every dataset lane and variant while reusing a compatible
+   backend.
+
+External batch preparation and parsing use the same request, raw-response,
+processor, and output boundaries. Only the transport timing changes.
 
 ## 4. Read a configuration
 
@@ -183,47 +178,11 @@ Run `validate` before an expensive model run. Use repeatable `--set
 path.to.value=value` overrides for machine-specific paths, model settings, or
 small row limits; overrides are applied before typed validation.
 
-## 5. Sentence generation: proposed extension
+## 5. Find the repository parts
 
-Sentence generation from semantic frames is a useful adjacent workflow, but it
-is not implemented by this inference-runner today. In particular, the current
-configuration schema has no `recipe`, semantic-frame, linguistic-control,
-realiser, or transformation sections. It would be misleading to present it as
-a runnable experiment configuration until those contracts and implementations
-exist.
-
-The intended design can fit the repository's existing boundaries:
-
-1. A versioned YAML **recipe** would define a set of semantic frames and a set
-   of linguistic controls. Together, one frame and one control form a sample:
-   a realisation recipe rather than a generated sentence.
-2. A generation **engine** would iterate frames, produce *m* controlled
-   realisations per frame, bind roles, and produce *n* template-based
-   instantiations initially.
-3. A pluggable **realiser** would turn each instantiation into text. A
-   template realiser is an appropriate first implementation; an inflation- or
-   grammar-based realiser could use the same interface later.
-4. Ordered **transformations** would receive `(semantic_frame,
-   linguistic_control, sentence)` and return a transformed sample. An abstract
-   transformation interface would keep these operations composable and
-   testable.
-5. An **output writer** would persist the source frame, controls,
-   instantiation provenance, transformations, and generated sentence. This is
-   analogous to the inference result writer, but it needs its own versioned
-   generation-data contract rather than Result Contract 2.0, which covers LLM
-   inference results only.
-
-This is a sensible repository feature, but it should be built as a separate
-sentence-generation subsystem—not squeezed into the existing `input` reader
-or processor pipeline. That separation preserves the current guarantee that a
-processor interprets model evidence for an already supplied input row. When
-implemented, its recipe schema, sample identity rules, deterministic seeding,
-and output contract should be documented and tested before this guide shows a
-runnable YAML example.
-
-## 6. Locate the implementation
-
-The package uses a dependency direction that makes changes local:
+The package uses a dependency direction that makes changes local. Use this map
+after following the run above to find the implementation responsible for each
+part:
 
 | If you want to change… | Start in… | Then register it in… |
 | --- | --- | --- |
@@ -240,7 +199,7 @@ The package uses a dependency direction that makes changes local:
 for older imports. New code should import from the plural packages and their
 abstract contracts.
 
-## 7. Add a feature safely
+## 6. Add a feature safely
 
 Implement the smallest abstract interface possible, add one explicit factory
 entry, and add focused tests beside the existing tests:
