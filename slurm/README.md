@@ -8,8 +8,8 @@ Install the GPU extra, set the portable run inputs, then submit:
 
 ```bash
 python -m pip install 'llms-experiments[gpu]'
-export CONFIG=/path/to/run.yaml
-export OUTPUT_DIR=/path/to/durable/results
+export CONFIG=<run.yaml>
+export OUTPUT_DIR=<durable-results>
 sbatch slurm/submit-vllm.sh
 ```
 

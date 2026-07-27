@@ -3,7 +3,7 @@
 Submit the full matrix with paths supplied at submission time:
 
 ```bash
-export OUTPUT_DIR=/path/to/durable/results
+export OUTPUT_DIR=<durable-results>
 export MODEL_ID=org/model-name
 sbatch configs/protoethos/slurm/submit_full_matrix.sh
 ```

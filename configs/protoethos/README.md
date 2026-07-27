@@ -19,8 +19,8 @@ Set dataset locations and durable output storage outside these files. For
 example:
 
 ```bash
-export DATA_ROOT=/path/to/datasets
-export OUTPUT_DIR=/path/to/durable/results
+export DATA_ROOT=<datasets>
+export OUTPUT_DIR=<durable-results>
 llms-experiments validate configs/protoethos/ministral_all_datasets.yaml
 ```
 

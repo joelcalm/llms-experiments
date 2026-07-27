@@ -5,8 +5,8 @@ this repository so `configs/protoethos/condor/run_matrix.sh` is available under
 `RUN_ROOT`, then set a durable output root and submit:
 
 ```bash
-export RUN_ROOT=/path/to/staged/llms-experiments
-export OUTPUT_DIR=/path/to/durable/results
+export RUN_ROOT=<staged-llms-experiments>
+export OUTPUT_DIR=<durable-results>
 condor_submit "$RUN_ROOT/configs/protoethos/condor/submit_extra_a100_models.sub"
 ```
 
