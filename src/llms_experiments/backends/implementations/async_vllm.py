@@ -64,6 +64,7 @@ class AsyncVLLMBackend(AsyncStreamingBackend):
         # requested default and keeps the dedicated async runtime compatible.
         engine_kwargs.pop("calculate_kv_scales", None)
         self.engine = AsyncLLM.from_engine_args(AsyncEngineArgs(**engine_kwargs))
+        self._tokenizer = self.engine.get_tokenizer()
         template_kwargs = model.get("chat_template_kwargs", {})
         if not isinstance(template_kwargs, dict):
             raise ValueError("model.chat_template_kwargs must be a mapping")
@@ -100,7 +101,7 @@ class AsyncVLLMBackend(AsyncStreamingBackend):
     def _render_chat(self, request: GenerationRequest, prompt: str) -> str:
         """Render one identical chat prompt before it enters the async engine."""
 
-        tokenizer = self.engine.get_tokenizer()
+        tokenizer = self._tokenizer
         return cast(
             str,
             tokenizer.apply_chat_template(

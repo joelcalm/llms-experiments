@@ -20,6 +20,7 @@ class ResumeIndex:
         self.connection = self._connect(path)
         self.cleared = False
         self.retryable_keys: set[tuple[str, str, int]] = set()
+        self.completed_keys: set[tuple[str, str, int]] = set()
         if fingerprint is not None:
             previous = self.connection.execute("SELECT value FROM metadata WHERE key='fingerprint'").fetchone()
             if previous and previous[0] != fingerprint:
@@ -27,6 +28,10 @@ class ResumeIndex:
                 self.cleared = True
             self.connection.execute("INSERT OR REPLACE INTO metadata VALUES ('fingerprint', ?)", (fingerprint,))
         self.connection.commit()
+        self.completed_keys = {
+            (row[0], row[1], int(row[2]))
+            for row in self.connection.execute("SELECT variant_id, input_row_id, source_position FROM completed")
+        }
 
     def _connect(self, path: Path) -> sqlite3.Connection:
         """Open the index, preserving durable parts if SQLite reports corruption."""
@@ -56,16 +61,11 @@ class ResumeIndex:
             return fresh
 
     def add(self, key: tuple[str, str, int]) -> None:
+        self.completed_keys.add(key)
         self.connection.execute("INSERT OR IGNORE INTO completed VALUES (?, ?, ?)", key)
 
     def contains(self, key: tuple[str, str, int]) -> bool:
-        return (
-            self.connection.execute(
-                "SELECT 1 FROM completed WHERE variant_id=? AND input_row_id=? AND source_position=? LIMIT 1",
-                key,
-            ).fetchone()
-            is not None
-        )
+        return key in self.completed_keys
 
     def seed_from(
         self,
@@ -114,9 +114,11 @@ class ResumeIndex:
                     "DELETE FROM completed WHERE variant_id=? AND input_row_id=? AND source_position=?",
                     key,
                 )
+                self.completed_keys.discard(key)
                 self.retryable_keys.add(key)
                 continue
             pending_keys.append(key)
+            self.completed_keys.add(key)
             if len(pending_keys) >= _SEED_BATCH_SIZE:
                 self.connection.executemany("INSERT OR IGNORE INTO completed VALUES (?, ?, ?)", pending_keys)
                 pending_keys.clear()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
@@ -18,6 +19,7 @@ class Events:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         event_path.parent.mkdir(parents=True, exist_ok=True)
         self.path = event_path
+        self.event_handle = event_path.open("a", encoding="utf-8")
         self.logger = logging.getLogger(f"llms-experiments.{event_path}")
         self.logger.handlers.clear()
         self.logger.setLevel(getattr(logging, level.upper(), logging.INFO))
@@ -28,11 +30,13 @@ class Events:
 
     def emit(self, event: str, **payload: Any) -> None:
         record = {"timestamp": time.time(), "event": event, **payload}
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        self.event_handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        self.event_handle.flush()
         self.logger.info("%s %s", event, json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
     def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self.event_handle.close()
         for handler in list(self.logger.handlers):
             handler.close()
             self.logger.removeHandler(handler)

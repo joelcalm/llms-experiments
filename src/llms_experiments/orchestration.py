@@ -420,10 +420,9 @@ def run(
 
             pending_rows: int | None = None
             if materialised is not None:
-                prepared_again = processor.prepare_rows(iter(materialised))
                 pending_rows = sum(
                     1
-                    for row in prepared_again
+                    for row in materialised
                     if not index.contains(
                         (variant_id, str(row[config["input"]["id_column"]]), int(row["_source_position"]))
                     )
@@ -448,13 +447,18 @@ def run(
                 size = int(config["model"].get("max_num_seqs", 1))
                 tuning_attempts: list[dict[str, Any]] = []
             else:
-                tune_prompts = [rendered_prompt(config, variant, row, schema) for row in prefetched]
                 tuning_attempts = []
+                rendered_cache: dict[int, str] = {}
                 next_probe_start = int(batch_config.get("start_size", declared[0]))
                 while True:
                     if dynamic_limit:
                         batch_config["start_size"] = next_probe_start
-                    tune_prompts = [rendered_prompt(config, variant, row, schema) for row in prefetched]
+                    tune_prompts = [
+                        rendered_cache.setdefault(
+                            int(row["_source_position"]), rendered_prompt(config, variant, row, schema)
+                        )
+                        for row in prefetched
+                    ]
                     size, attempts = tune(
                         backend,
                         request,

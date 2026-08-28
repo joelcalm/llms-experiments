@@ -74,15 +74,21 @@ def _valid(row: dict[str, Any], strategy: str) -> bool:
 def _unique_rows(rows: list[dict[str, Any]]) -> tuple[dict[tuple[str, int], dict[str, Any]], int]:
     """Index only unique composite keys and return the number of duplicate keys."""
 
-    counts = Counter(_key(row) for row in rows)
-    return ({_key(row): row for row in rows if counts[_key(row)] == 1}, sum(count > 1 for count in counts.values()))
+    keys = [_key(row) for row in rows]
+    counts = Counter(keys)
+    unique = {key: row for key, row in zip(keys, rows) if counts[key] == 1}
+    return unique, sum(count > 1 for count in counts.values())
 
 
-def compare(model: str, bf16_path: Path, int4_path: Path, dataset: str, strategy: str) -> AgreementMetrics:
+def compare(
+    model: str,
+    bf16_rows: list[dict[str, Any]],
+    int4_rows: list[dict[str, Any]],
+    dataset: str,
+    strategy: str,
+) -> AgreementMetrics:
     """Compare one pair of Parquet files at the input-row grain."""
 
-    bf16_rows = parquet.read_table(bf16_path).to_pylist()
-    int4_rows = parquet.read_table(int4_path).to_pylist()
     bf16, bf16_duplicates = _unique_rows(bf16_rows)
     int4, int4_duplicates = _unique_rows(int4_rows)
     keys = sorted(set(bf16) & set(int4))
@@ -122,8 +128,8 @@ def compare(model: str, bf16_path: Path, int4_path: Path, dataset: str, strategy
 
 def label_agreement_rows(
     model: str,
-    bf16_path: Path,
-    int4_path: Path,
+    bf16_rows: list[dict[str, Any]],
+    int4_rows: list[dict[str, Any]],
     dataset: str,
     strategy: str,
 ) -> list[dict[str, Any]]:
@@ -134,8 +140,6 @@ def label_agreement_rows(
     label produced only by one run is still represented.
     """
 
-    bf16_rows = parquet.read_table(bf16_path).to_pylist()
-    int4_rows = parquet.read_table(int4_path).to_pylist()
     bf16, _ = _unique_rows(bf16_rows)
     int4, _ = _unique_rows(int4_rows)
     keys = sorted(set(bf16) & set(int4))
@@ -205,15 +209,11 @@ def main() -> None:
             for strategy in ("single_label_json", "multi_label_json"):
                 bf16_path = bf16_root / f"dataset={dataset}" / f"{strategy}.parquet"
                 int4_path = int4_root / f"dataset={dataset}" / f"{strategy}.parquet"
-                metrics = compare(
-                    model,
-                    bf16_path,
-                    int4_path,
-                    dataset,
-                    strategy,
-                )
+                bf16_rows = parquet.read_table(bf16_path).to_pylist()
+                int4_rows = parquet.read_table(int4_path).to_pylist()
+                metrics = compare(model, bf16_rows, int4_rows, dataset, strategy)
                 rows.append(asdict(metrics))
-                label_rows.extend(label_agreement_rows(model, bf16_path, int4_path, dataset, strategy))
+                label_rows.extend(label_agreement_rows(model, bf16_rows, int4_rows, dataset, strategy))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))

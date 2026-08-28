@@ -22,7 +22,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pytest -q
+      - run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q
       - run: uv build
       - run: uv venv .wheel-venv --python ${{ matrix.python-version }}
       - run: uv pip install --python .wheel-venv/bin/python dist/*.whl
