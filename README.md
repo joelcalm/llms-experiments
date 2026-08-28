@@ -3,7 +3,6 @@
 [![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Licence: MIT](https://img.shields.io/badge/Licence-MIT-yellow.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 [![Documentation](https://img.shields.io/badge/docs-v0.2.0-blue.svg)](docs/)
 
 `llms-experiments` is an installable, modular library and CLI for configuration-driven Large Language Model (LLM) inference. It provides durable, resumable Parquet, CSV, and JSONL outputs; in-process vLLM and llama.cpp engines; vendor-neutral OpenAI-compatible endpoints; external `vllm run-batch` workflows; and a deterministic fake backend for offline testing.
@@ -56,13 +55,13 @@ external batch response parsing.
 Python 3.11–3.13 is supported. The default installation is CPU-light and validates configurations, queries endpoints, prepares/parses external batches, and executes tests:
 
 ```bash
-python -m pip install .
+uv sync --all-groups
 ```
 
 To install local vLLM GPU inference capabilities:
 
 ```bash
-python -m pip install '.[gpu]'
+uv sync --all-groups --extra gpu
 ```
 
 The GPU extra uses `vllm>=0.25.1,<0.26`. The repository carries no custom model monkeypatches or startup hooks.
@@ -70,7 +69,7 @@ The GPU extra uses `vllm>=0.25.1,<0.26`. The repository carries no custom model 
 To run local GGUF models through the CPU-friendly llama.cpp backend:
 
 ```bash
-python -m pip install '.[llama-cpp]'
+uv sync --all-groups --extra llama-cpp
 ```
 
 Set `model.backend` to `llama_cpp` and provide `model.model_path` (or `model.path`)
@@ -81,7 +80,7 @@ the two processor strategies used by the smoke test. Its placeholder model and
 input paths are intentionally overridden at runtime, for example:
 
 ```bash
-llms-experiments run experiments/cpu_llama_cpp_smollm2.yaml \
+uv run llms-experiments run experiments/cpu_llama_cpp_smollm2.yaml \
   --set model.model_path=/models/SmolLM2-135M-Instruct-Q4_K_M.gguf \
   --set input.path=experiment-cli/data/smoke.parquet \
   --set input.format=parquet --set input.id_column=id --set input.text_column=text \
@@ -94,11 +93,11 @@ llms-experiments run experiments/cpu_llama_cpp_smollm2.yaml \
 ## Commands & Usage
 
 ```bash
-llms-experiments validate CONFIG
-llms-experiments run CONFIG
-llms-experiments prepare CONFIG
-llms-experiments parse CONFIG --responses RESPONSES.jsonl
-llms-experiments doctor
+uv run llms-experiments validate CONFIG
+uv run llms-experiments run CONFIG
+uv run llms-experiments prepare CONFIG
+uv run llms-experiments parse CONFIG --responses RESPONSES.jsonl
+uv run llms-experiments doctor
 ```
 
 - `validate`: Enforces typed Pydantic configuration validation and verifies prompt template paths.
@@ -114,8 +113,8 @@ llms-experiments doctor
 Each run is specified in one YAML file. Inputs, models, Markdown prompt fragments, ordered processor stages, schemas, resource limits, retries, batching policies, and output format remain data, not Python code. Validate the included CPU-only matrix fixture with:
 
 ```bash
-llms-experiments validate experiments/matrix_smoke.yaml
-llms-experiments run experiments/matrix_smoke.yaml --backend fake --rows 2
+uv run llms-experiments validate experiments/matrix_smoke.yaml
+uv run llms-experiments run experiments/matrix_smoke.yaml --backend fake --rows 2
 ```
 
 The checked-in matrix fixture contains two source rows; `--rows` is an upper
@@ -127,6 +126,25 @@ The typed configuration models reside in `llms_experiments.config`; the generate
 Paper-specific run definitions are isolated under
 [`configs/protoethos/`](configs/protoethos/); generic smoke and example
 configurations remain under `experiments/`.
+
+## Running on compute clusters
+
+The same `llms-experiments run` entry point is wrapped for every execution
+environment; there is no separate cluster implementation. Tracked, reusable
+templates:
+
+* **HTCondor** — [`condor/submit.htcondor`](condor/submit.htcondor) +
+  [`condor/run.sh`](condor/run.sh), documented in
+  [configs/protoethos/condor/README.md](configs/protoethos/condor/README.md).
+  Per-experiment `*.sub` descriptors are generated runtime artifacts and are
+  git-ignored.
+* **Slurm** — [`slurm/submit-vllm.sh`](slurm/submit-vllm.sh), documented in
+  [slurm/README.md](slurm/README.md).
+* **Single local GPU** — [`examples/run_local_gpu.sh`](examples/run_local_gpu.sh),
+  a `uv run`-based wrapper that accepts `CONFIG`, `OUTPUT_DIR`, `BACKEND`, and
+  `ROWS` environment overrides.
+
+All three produce the identical Parquet result contract.
 
 ---
 
@@ -147,7 +165,7 @@ uv sync --all-groups
 uv run ruff check .
 uv run ruff format --check .
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q
-python -m build
+uv run python -m build
 ```
 
 The test suite is CPU-only and uses the fake backend. GPU throughput and model acceptance remain separate release gates.

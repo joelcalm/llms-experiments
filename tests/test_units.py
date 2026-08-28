@@ -60,6 +60,21 @@ def test_check_schema_booleans_are_not_integers() -> None:
     assert errors
 
 
+def test_check_schema_rejects_duplicate_and_oversized_label_arrays() -> None:
+    # Duplicate labels are enforced post-generation because vLLM's grammar
+    # backends reject the standard JSON-Schema uniqueItems keyword.
+    schema = {
+        "type": "object",
+        "properties": {"labels": {"type": "array", "items": {"type": "string"}, "maxItems": 2}},
+        "required": ["labels"],
+    }
+    assert cli.validate_response(json.dumps({"labels": ["care", "harm"]}), schema)[1] == []
+    duplicate_errors = cli.validate_response(json.dumps({"labels": ["care", "care"]}), schema)[1]
+    oversized_errors = cli.validate_response(json.dumps({"labels": ["care", "harm", "fairness"]}), schema)[1]
+    assert any("items must be unique" in error for error in duplicate_errors)
+    assert any("maximum items" in error for error in oversized_errors)
+
+
 # --- label parsing ------------------------------------------------------------------
 
 
@@ -218,6 +233,22 @@ def test_resume_index_clears_when_fingerprint_changes(tmp_path: Path) -> None:
     assert changed.cleared
     assert not changed.contains(("v", "row", 0))
     changed.close()
+
+
+def test_resume_index_rebuilds_malformed_database_without_clearing_parts(tmp_path: Path) -> None:
+    path = tmp_path / "r.sqlite"
+    first = cli.ResumeIndex(path, "fp1")
+    first.add(("v", "row", 0))
+    first.close()
+    path.write_bytes(b"not a sqlite database")
+
+    recovered = cli.ResumeIndex(path, "fp1")
+
+    assert recovered.recovered_from_corruption
+    assert not recovered.cleared
+    assert not recovered.contains(("v", "row", 0))
+    assert list(tmp_path.glob("r.sqlite.corrupt-*"))
+    recovered.close()
 
 
 # --- parts merging ------------------------------------------------------------------

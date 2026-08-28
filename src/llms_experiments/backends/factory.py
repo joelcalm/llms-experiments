@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from .base import Backend
+from .implementations.async_vllm import AsyncVLLMBackend
 from .implementations.fake import FakeBackend
 from .implementations.llama_cpp import LlamaCppBackend
 from .implementations.openai_compatible import OpenAICompatibleBackend
@@ -16,6 +17,7 @@ BACKEND_TYPES: dict[str, type[Backend]] = {
     "openai_compatible": OpenAICompatibleBackend,
     "llama_cpp": LlamaCppBackend,
     "local_vllm": VLLMBackend,
+    "local_vllm_async": AsyncVLLMBackend,
 }
 
 

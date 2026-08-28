@@ -1,6 +1,7 @@
 """Interchangeable durable result stores."""
 
 from .base import AtomicPartWriter, OutputStore, ResultFileWriter
+from .checkpoints import publish_checkpoint
 from .factory import (
     OUTPUT_STORE_TYPES,
     PartWriter,
@@ -28,4 +29,5 @@ __all__ = [
     "create_output_store_for_path",
     "merge_parts",
     "normalize_result_row",
+    "publish_checkpoint",
 ]

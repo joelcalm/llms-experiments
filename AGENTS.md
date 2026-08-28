@@ -92,6 +92,26 @@ Experiments must record:
 
 Generated result outputs and model artifacts must not be committed to Git unless they are small, intentional test fixtures under `tests/golden/`.
 
+### Git hygiene and large files
+
+* **Never commit large derived artifacts.** Anything over roughly **100 MB**
+  (parsed result Parquet under `release/`, model checkpoints, full `results/`
+  trees) is a published artifact, not repository source. Upload it to external
+  or release storage (GitHub Releases, an artifact store, Lustre) and keep its
+  path in `.gitignore`. `results/`, `release/`, `outputs/`, `logs/`, and
+  `internal_documentation/` are already ignored for this reason.
+* **Per-experiment job scripts are runtime artifacts.** HTCondor `*.sub`
+  descriptors and Condor/Slurm worker shells are generated per campaign; keep
+  only tracked, reusable templates (`condor/submit.htcondor`, `condor/run.sh`,
+  `slurm/submit-vllm.sh`, `examples/run_local_gpu.sh`) and git-ignore the
+  generated ones. Do not commit a matrix of one-off submit files.
+* **Before committing, scan for bloat.** Run
+  `git status --porcelain | du -sh` style checks and `du -sh` on untracked
+  directories so a multi-hundred-MB directory is never staged by accident.
+* Treat `docs/` (architecture, configuration, result-contract) as the
+  human-readable contract, but the implementation, unit tests, and
+  `result-contract.md` remain the sources of truth when they disagree.
+
 ## Testing Rules
 
 * Tests must be deterministic.
@@ -117,6 +137,19 @@ Generated result outputs and model artifacts must not be committed to Git unless
 ## Documentation
 
 Update documentation in the same change when behavior, configuration, architecture, schemas, or result contracts change. Link to authoritative documents rather than duplicating detailed documentation.
+
+Documentation is **not** authoritative on its own: when a doc disagrees with the
+implementation, unit tests, or `docs/result-contract.md`, the code is correct and
+the doc must be fixed. Prefer targeted edits to the existing doc over creating
+new files.
+
+### Audit workflow
+
+For a broad documentation/structure/efficiency audit, parallelize the independent
+checks with subagents (one each for doc-staleness, structure, efficiency) rather
+than reading the whole tree serially, then reconcile findings. Always pair an audit
+with `uv run python scripts/check.py` and a `git status`/`du -sh` bloat scan before
+declaring the tree clean.
 
 ## Change Discipline
 

@@ -356,9 +356,13 @@ def batch_command_args(
         ("tokenizer_mode", "--tokenizer-mode"),
         ("config_format", "--config-format"),
         ("load_format", "--load-format"),
+        ("kv_cache_dtype", "--kv-cache-dtype"),
+        ("max_num_batched_tokens", "--max-num-batched-tokens"),
     ):
         if option in model:
             command.extend([flag, str(model[option])])
+    if model.get("calculate_kv_scales", False):
+        command.append("--calculate-kv-scales")
     return command
 
 

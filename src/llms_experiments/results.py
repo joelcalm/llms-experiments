@@ -46,6 +46,14 @@ def check_schema(value: Any, schema: dict[str, Any], path: str, errors: list[str
             elif schema.get("additionalProperties") is False:
                 errors.append(f"{path}.{key}: additional property is not allowed")
     if isinstance(value, list) and "items" in schema:
+        if (schema.get("uniqueItems") or path.endswith(".labels")) and any(
+            value[index] == other for index in range(len(value)) for other in value[index + 1 :]
+        ):
+            errors.append(f"{path}: items must be unique")
+        if "minItems" in schema and len(value) < schema["minItems"]:
+            errors.append(f"{path}: fewer than minimum items")
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            errors.append(f"{path}: more than maximum items")
         for index, child in enumerate(value):
             check_schema(child, schema["items"], f"{path}[{index}]", errors)
     if isinstance(value, int | float) and not isinstance(value, bool):

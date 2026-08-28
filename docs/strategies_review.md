@@ -101,7 +101,7 @@ label, sets `_target_label`, and derives a deterministic expanded
 passes through yes/no candidate extraction. The output therefore retains the
 source ID, target label, and both raw log scores.
 
-## Verbalized confidence with token evidence
+## Verbalization logprobs with token evidence
 
 ```yaml
 processor:
@@ -115,14 +115,21 @@ processor:
       top_logprobs: 20
 ```
 
+This is a schema-constrained implementation of the verbalization-logprobs
+estimator of Merdjanovska, Zaidan, and Rueckle (Findings of ACL 2026). Their
+illustrative free-text form is `Label and Confidence (0-100): positive, 85%`.
+Here the same label-plus-two-digits evidence is serialised as JSON, so that the
+digit positions and their token probabilities are validated deterministically.
+It is formula-equivalent, not a literal reproduction of that free-text prompt.
+
 The model returns `label`, `confidence_tens`, and `confidence_units` as separate
 schema-constrained fields. The final stage scans generated token positions
 backward to align the sampled units and tens digits. At each position it
 combines tokenizer spellings of digits with log-sum-exp and derives:
 
 - literal confidence: `(10 * tens + units) / 100`;
-- weighted confidence: the expected two-digit value from observed token
-  probabilities, divided by 100;
+- weighted confidence: `(sum_d 10*d*P(tens=d) + sum_d d*P(units=d)) / 100`,
+  treating positions as independent, as in the paper;
 - per-position digit log probabilities;
 - observed digit probability mass as a coverage diagnostic.
 

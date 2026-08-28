@@ -8,7 +8,8 @@ results, credentials, or site-specific absolute paths.
 | --- | --- |
 | `ministral_all_datasets.yaml` | Full multi-dataset ProtoEthos matrix |
 | `mova2025.yaml` | Five-theory MoVa smoke matrix |
-| `mova_full_matrix.yaml` | Full MoVa comparison matrix |
+| `protoethos_full_matrix.yaml` | Canonical full ProtoEthos comparison matrix |
+| `mova_full_matrix.yaml` | Legacy compatibility copy of the ProtoEthos matrix |
 | `condor/` | HTCondor launch wrapper and paper job descriptions |
 | `slurm/` | Slurm launch wrapper for the same full matrix |
 
@@ -21,7 +22,7 @@ example:
 ```bash
 export DATA_ROOT=<datasets>
 export OUTPUT_DIR=<durable-results>
-llms-experiments validate configs/protoethos/ministral_all_datasets.yaml
+uv run llms-experiments validate configs/protoethos/ministral_all_datasets.yaml
 ```
 
 Use `condor/` or `slurm/` here only for this paper. The repository-level

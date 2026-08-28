@@ -1,4 +1,4 @@
-"""Verbalized confidence processing stage implementation."""
+"""Schema-constrained implementation of verbalization logprobs."""
 
 from __future__ import annotations
 
@@ -11,7 +11,13 @@ from ..utils import digit_from_token, digit_logprobs
 
 
 class VerbalizedConfidenceStage(ProcessingStage):
-    """Aligns verbalized confidence digits with token logprobabilities."""
+    """Compute the paper's independent tens/units digit expectation.
+
+    The response serialises the label and two confidence digits as JSON so that
+    the generated digit positions can be identified deterministically. This is
+    an output-format adaptation; the score is the verbalization-logprobs
+    estimator, not a taxonomy probability vector.
+    """
 
     type_name = "verbalized_confidence"
     required_fields = frozenset({"value", "token_positions"})
@@ -97,7 +103,9 @@ class VerbalizedConfidenceStage(ProcessingStage):
         }
         masses = {place: sum(values.values()) for place, values in probabilities.items()}
 
-        # Compute logprob-weighted expectation across all digit choices 0-9
+        # Verbalization logprobs: E[(10 * D_tens + D_units) / 100].
+        # Do not renormalize a truncated top-logprob distribution; retain its
+        # probability mass below as an explicit coverage diagnostic.
         expected_tens = sum(int(digit) * probability for digit, probability in probabilities["tens"].items())
         expected_units = sum(int(digit) * probability for digit, probability in probabilities["units"].items())
         enriched = {

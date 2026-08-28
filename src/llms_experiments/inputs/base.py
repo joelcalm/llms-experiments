@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -26,12 +27,12 @@ class InputReader(ABC):
     @property
     def path(self) -> Path:
         """Resolve the configured input path against the reader root."""
-        path = Path(str(self.source["path"]))
+        path = Path(os.path.expandvars(str(self.source["path"])))
         return path if path.is_absolute() else self.root / path
 
     def resolve(self, value: str | Path) -> Path:
         """Resolve a secondary configured path against the reader root."""
-        path = Path(value)
+        path = Path(os.path.expandvars(str(value)))
         return path if path.is_absolute() else self.root / path
 
     def validate(self) -> None:

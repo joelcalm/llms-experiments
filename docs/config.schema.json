@@ -54,6 +54,7 @@
         "backend": {
           "enum": [
             "local_vllm",
+            "local_vllm_async",
             "openai_compatible",
             "fake",
             "llama_cpp"

@@ -16,9 +16,14 @@ These pages describe the installable `llms-experiments` package at version
 - [Result contract](result-contract.md): the row schema, status semantics,
   provenance, and output files.
 - [Configuration JSON Schema](config.schema.json): generated editor/tooling
-  schema. Regenerate it with `python scripts/generate_config_schema.py` from an
-  installed checkout.
+  schema. Regenerate it with `uv run python scripts/generate_config_schema.py`
+  from an installed checkout.
 
 The source tree also contains runnable examples under `experiments/`. The
 CPU-only fake-backend matrix is the fastest installation check; the llama.cpp
 example requires the optional `llama-cpp` dependency and a local GGUF model.
+
+Artemisa execution reports are kept separately under
+[`../internal_documentation/`](../internal_documentation/). Dated status files
+are provenance snapshots; consult `internal_documentation/00-live-status.md`
+and re-query the scheduler before treating a job or result as current.

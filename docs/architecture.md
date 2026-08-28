@@ -23,17 +23,20 @@ and the semantic result type.
 
 | Package/module | Responsibility |
 | --- | --- |
-| `backends/` | `Backend` ABC and vLLM, llama.cpp, OpenAI-compatible, and fake transports |
-| `inputs/` | `InputReader` ABC and normalized, stable-position source readers |
-| `processors/` | typed contracts, `ProcessingStage` ABC, pipeline compiler, and built-in stages |
-| `outputs/` | `OutputStore`/`ResultFileWriter` ABCs, Parquet, CSV, JSONL, atomic parts, and resume index |
+| `backends/` | `Backend` ABC and registered transports: `local_vllm`, `local_vllm_async`, `openai_compatible`, `llama_cpp`, `fake`. Concrete transports live in `backends/implementations/` |
+| `inputs/` | `InputReader` ABC and normalized, stable-position source readers; concrete readers in `inputs/implementations/` |
+| `processors/` | typed contracts, `ProcessingStage` ABC, pipeline compiler, and built-in stages; concrete stages in `processors/implementations/` |
+| `outputs/` | `OutputStore`/`ResultFileWriter` ABCs, Parquet, CSV, JSONL, atomic parts, and resume index; concrete stores in `outputs/implementations/` |
 | `configuration.py` | YAML loading, validation, overrides, and dataset lanes |
 | `prompting.py` | prompt assets, rendering, schemas, hashes, and external request bodies |
 | `orchestration.py` | bounded run loop, tuning, backoff, retry, resume, and matrices |
 | `batching.py` | external batch preparation and response ingestion |
+| `runtime/` | resource discovery and guards (`runtime/resources.py` backs the documented `resources.cpu`) |
+| `runner.py` | entry points for single runs and matrix expansion |
+| `external_batch.py` | `prepare`/`parse` batch command emission and ingestion |
 | `results.py` | format-independent result contract and row construction |
 | `events.py` | structured events and diagnostic error streams |
-| `_core.py` | deprecated compatibility re-exports only |
+| `compatibility.py`, `backend.py`, `input.py`, `prompt.py`, `_core.py` | deprecated compatibility facades / re-exports |
 
 Imports point inward toward contracts. In particular, processors do not import
 backends or output formats, and backends do not know which semantic strategy
@@ -94,8 +97,12 @@ Every output store uses the same logical schema. Rows are buffered into
 append-only parts and published by atomic rename before their identities are
 committed to SQLite. Resume seeds only from durable rows whose configuration
 hash matches. A backend failure remains retryable; deterministic validation
-failures remain complete. Final per-run and per-variant files are projections
-of the immutable parts, with the newest retry winning.
+failures remain complete unless the configuration explicitly enables
+`validation.retry.retry_failed_validation_on_resume`. That opt-in is intended
+for a corrected structured-output prompt, schema, or token budget. Final
+per-run and per-variant files are projections of the immutable parts, with the
+newest retry winning. The resume index batches SQLite inserts so large
+campaigns do not pay one transaction per row.
 
 Parquet is the default. CSV encodes each contract cell as JSON, and JSONL uses
 tagged values for non-finite floats, so nulls, lists, maps, and `±Infinity`

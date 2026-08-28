@@ -94,6 +94,16 @@ internal_documentation/
 *.jsonl
 protoethosv2_3m_finalqc_20260512.csv
 
+# Large derived release artifacts (parsed result Parquets, 315M+). Publish to
+# GitHub Releases / artifact store instead of committing; anything over ~100M is
+# a published artifact, not repository source.
+release/
+
+# Generated per-experiment HTCondor job scripts (runtime artifacts). Keep only the
+# README as documentation; do not commit a matrix of one-off submit files.
+configs/protoethos/condor/*
+!configs/protoethos/condor/README.md
+
 # AI / LLM / Copilot / Editor files
 .aider*
 .cursor*

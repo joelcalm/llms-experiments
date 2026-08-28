@@ -11,6 +11,7 @@ from conftest import REPO_ROOT
 from pydantic import ValidationError
 
 from llms_experiments import __version__
+from llms_experiments.batching import batch_command_args
 from llms_experiments.cli import build_parser, main
 from llms_experiments.config import ExperimentConfig, configuration_schema, load_config
 
@@ -86,6 +87,28 @@ def test_prepare_matrix_reports_each_request_and_launch_command(tmp_path, capsys
     payload = json.loads(capsys.readouterr().out)
     assert len(payload["requests"]) == len(payload["launch_commands"]) == 2
     assert all("vllm run-batch" in command for command in payload["launch_commands"])
+
+
+def test_batch_command_forwards_kv_cache_dtype_and_token_budget(tmp_path) -> None:
+    config = {
+        "_root": str(tmp_path),
+        "model": {
+            "name": "example/model",
+            "gpu_memory_utilization": 0.96,
+            "max_model_len": 2048,
+            "max_num_seqs": 1024,
+            "kv_cache_dtype": "fp8",
+            "calculate_kv_scales": True,
+            "max_num_batched_tokens": 131072,
+        },
+        "output": {"directory": str(tmp_path / "out")},
+    }
+
+    command = batch_command_args(config)
+
+    assert command[command.index("--kv-cache-dtype") + 1] == "fp8"
+    assert command[command.index("--max-num-batched-tokens") + 1] == "131072"
+    assert "--calculate-kv-scales" in command
 
 
 def test_v02_shim_maps_legacy_matrix_commands() -> None:

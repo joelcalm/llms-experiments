@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+import pyarrow.parquet as pq
 import pytest
 
 from llms_experiments.outputs import RESULT_COLUMNS, ResumeIndex, create_output_store
@@ -60,6 +61,8 @@ def test_store_roundtrip_atomic_resume_and_finalize(tmp_path: Path, output_forma
     assert rows[0]["candidate_scores"]["A"] == 0.0
     assert math.isinf(rows[0]["candidate_scores"]["B"])
     assert store.variant_path("variant").exists()
+    if output_format == "parquet":
+        assert pq.ParquetFile(store.result_path()).num_row_groups == 1
 
 
 @pytest.mark.parametrize("output_format", ["parquet", "csv", "jsonl"])
@@ -78,3 +81,27 @@ def test_store_keeps_latest_retried_attempt(tmp_path: Path, output_format: str) 
     assert len(rows) == 1
     assert rows[0]["raw_response"] == "second"
     assert rows[0]["attempt_count"] == 2
+
+
+def test_store_can_publish_only_an_isolated_variant(tmp_path: Path) -> None:
+    store = create_output_store({"format": "parquet", "directory": str(tmp_path)}, tmp_path)
+    row = _row(0)
+    row["variant_id"] = "single_label_json"
+    row["config_hash"] = "expected"
+    isolated_writer = store.part_writer("single_label_json", target_rows=1)
+    isolated_writer.append(row)
+    isolated_writer.close()
+
+    assert store.finalize({"single_label_json": "expected"}, publish_combined=False) == 1
+    assert store.variant_path("single_label_json").exists()
+    assert not store.result_path().exists()
+
+    other = _row(1)
+    other["variant_id"] = "multi_label_json"
+    other["config_hash"] = "other"
+    other_writer = store.part_writer("multi_label_json", target_rows=1)
+    other_writer.append(other)
+    other_writer.close()
+    store.discard_variants(["single_label_json"])
+    assert not store.part_directory("single_label_json").exists()
+    assert store.part_directory("multi_label_json").exists()

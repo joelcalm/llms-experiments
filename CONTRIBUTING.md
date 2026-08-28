@@ -8,8 +8,8 @@ Contributions should keep the runner domain-agnostic and preserve the Parquet re
 uv sync --all-groups
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest
-python -m build
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q
+uv run python -m build
 ```
 
 Use the fake backend and standard test fixtures for unit tests. Tests must not require private datasets, model downloads, or a GPU. If an intentional change affects result rows or manifests, regenerate golden files with `uv run pytest --golden-update` and review the resulting diff.

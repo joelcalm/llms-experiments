@@ -147,6 +147,24 @@ def test_validation_failures_are_not_retried_on_resume(smoke_config, streaming: 
     assert len(rows) == 4
 
 
+@pytest.mark.parametrize("streaming", [False, True])
+def test_opt_in_retries_validation_failures_on_resume(smoke_config, streaming: bool) -> None:
+    """A corrected campaign can explicitly replace failed structured rows."""
+    config = smoke_config(**{"validation.retry.retry_failed_validation_on_resume": "true"})
+    config["streaming"] = {"enabled": streaming}
+    config["variants"] = [v for v in config["variants"] if v["id"] == "single_label_json"]
+
+    cli.run(config, InvalidBackend(), row_limit=4)
+    manifest = cli.run(config, cli.FakeBackend(), row_limit=4)
+
+    rows = _read_rows(Path(config["output"]["directory"]))
+    assert {row["final_status"] for row in rows} == {"completed"}
+    assert manifest["resume_skipped_rows"] == 0
+    assert len(rows) == 4
+    keys = [(row["variant_id"], row["input_row_id"], row["source_position"]) for row in rows]
+    assert len(set(keys)) == len(keys)
+
+
 def _read_rows(run_dir: Path) -> list[dict]:
     import pyarrow.parquet as pq
 

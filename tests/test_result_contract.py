@@ -70,6 +70,34 @@ def test_only_atomically_published_parts_become_resumable(tmp_path: Path) -> Non
     after.close()
 
 
+def test_isolated_variant_writes_strategy_specific_provenance(tmp_path: Path) -> None:
+    config = core.load_config(
+        REPO_ROOT / "experiments" / "matrix_smoke.yaml",
+        [f"output.directory={tmp_path / 'matrix'}", "model.backend=fake"],
+        check_files=True,
+    )
+    lane = core.select_dataset(config, "nested_json")
+    lane["variants"] = [variant for variant in config["variants"] if variant["id"] == "single_label_json"]
+    lane["output"].update(
+        {
+            "variant_isolated": True,
+            "resume_index_name": ".resume.single_label_json.sqlite",
+            "effective_config_name": "effective_config.single_label_json.yaml",
+            "manifest_name": "manifest.single_label_json.json",
+        }
+    )
+
+    manifest = core.run(lane, core.FakeBackend(), row_limit=2)
+    run_dir = Path(lane["output"]["directory"])
+
+    assert manifest["output"]["combined_result_published"] is False
+    assert (run_dir / "single_label_json.parquet").exists()
+    assert (run_dir / "manifest.single_label_json.json").exists()
+    assert (run_dir / "manifest.json").exists()
+    assert (run_dir / "effective_config.single_label_json.yaml").exists()
+    assert not (run_dir / "results.parquet").exists()
+
+
 def _row(position: int) -> dict:
     row = dict.fromkeys(core.RESULT_SCHEMA.names)
     row.update(

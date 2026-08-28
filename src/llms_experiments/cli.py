@@ -25,7 +25,7 @@ def _common(command: argparse.ArgumentParser) -> None:
     command.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
     command.add_argument("--run-id")
     command.add_argument("--model")
-    command.add_argument("--backend", choices=["vllm", "openai-compatible", "llama-cpp", "fake"])
+    command.add_argument("--backend", choices=["vllm", "vllm-async", "openai-compatible", "llama-cpp", "fake"])
     command.add_argument("--output")
     command.add_argument("--output-format", choices=["parquet", "csv", "jsonl"])
     command.add_argument("--dataset")
@@ -60,6 +60,7 @@ def _overrides(args: argparse.Namespace) -> list[str]:
     }
     backend_names = {
         "vllm": "local_vllm",
+        "vllm-async": "local_vllm_async",
         "openai-compatible": "openai_compatible",
         "fake": "fake",
         "llama-cpp": "llama_cpp",

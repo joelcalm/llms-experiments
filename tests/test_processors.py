@@ -138,6 +138,57 @@ def test_stage_failure_stops_dependent_stages_and_preserves_raw(tmp_path) -> Non
     assert response.text == "not json"
 
 
+def test_verbalization_logprobs_matches_the_two_digit_expectation(tmp_path) -> None:
+    schema = tmp_path / "confidence-schema.json"
+    schema.write_text(
+        json.dumps(
+            {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string", "enum": ["care"]},
+                    "confidence_tens": {"type": "integer", "minimum": 0, "maximum": 9},
+                    "confidence_units": {"type": "integer", "minimum": 0, "maximum": 9},
+                },
+                "required": ["label", "confidence_tens", "confidence_units"],
+                "additionalProperties": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    processor = create_processor(
+        {
+            "id": "verbalization_logprobs",
+            "max_tokens": 64,
+            "processor": {
+                "result": "single_label_verbalized_confidence",
+                "stages": [
+                    {"type": "json_decode"},
+                    {"type": "json_schema", "schema": str(schema)},
+                    {"type": "verbalized_confidence", "top_logprobs": 20},
+                ],
+            },
+        },
+        root=tmp_path,
+    )
+    positions = (
+        TokenPosition("{", 0.0, (TokenCandidate("{", 0.0),)),
+        TokenPosition("9", math.log(0.8), (TokenCandidate("8", math.log(0.2)), TokenCandidate("9", math.log(0.8)))),
+        TokenPosition("5", math.log(0.75), (TokenCandidate("4", math.log(0.25)), TokenCandidate("5", math.log(0.75)))),
+        TokenPosition("}", 0.0, (TokenCandidate("}", 0.0),)),
+    )
+
+    result = processor.process(
+        RawModelResponse('{"label":"care","confidence_tens":9,"confidence_units":5}', 4, positions),
+        {"_source_position": 0},
+    )
+
+    assert result.valid
+    assert result.value["verbalized_confidence"] == pytest.approx(0.95)
+    # (10 * (8*.2 + 9*.8) + (4*.25 + 5*.75)) / 100
+    assert result.value["logprob_weighted_confidence"] == pytest.approx(0.9275)
+    assert result.value["confidence_digit_probability_mass"] == pytest.approx({"tens": 1.0, "units": 1.0})
+
+
 def test_pipeline_rejects_identity_composition(tmp_path) -> None:
     with pytest.raises(ValueError, match="identity must be the only stage"):
         create_processor(

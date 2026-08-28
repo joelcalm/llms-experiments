@@ -9,6 +9,8 @@ from typing import Any
 
 from .schema import normalize_result_row
 
+_FINAL_WRITE_BATCH_ROWS = 4096
+
 
 class ResultFileWriter(ABC):
     @abstractmethod
@@ -91,13 +93,28 @@ class OutputStore(ABC):
         *,
         expected_hashes: Mapping[str, str] | None = None,
         latest_retries: Mapping[tuple[str, str, int], tuple[int, int]] | None = None,
+        publish_combined: bool = True,
     ) -> int:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         result_temporary = self.result_path().with_suffix(f".{self.extension}.tmp")
-        result_writer = self.open_writer(result_temporary)
+        result_writer = self.open_writer(result_temporary) if publish_combined else None
         variant_writers: dict[str, ResultFileWriter] = {}
         variant_temporaries: dict[str, Path] = {}
+        result_rows: list[dict[str, Any]] = []
+        variant_rows: dict[str, list[dict[str, Any]]] = {}
         count = 0
+
+        def flush_result_rows() -> None:
+            if result_writer is not None and result_rows:
+                result_writer.write(result_rows)
+                result_rows.clear()
+
+        def flush_variant_rows(variant: str) -> None:
+            rows = variant_rows[variant]
+            if rows:
+                variant_writers[variant].write(rows)
+                rows.clear()
+
         try:
             for file_index, row_index, row in rows:
                 normalized = normalize_result_row(row)
@@ -107,22 +124,32 @@ class OutputStore(ABC):
                 key = (variant, str(normalized["input_row_id"]), int(normalized["source_position"]))
                 if latest_retries and latest_retries.get(key, (file_index, row_index)) != (file_index, row_index):
                     continue
-                result_writer.write([normalized])
                 if variant not in variant_writers:
                     temporary = self.variant_path(variant).with_suffix(f".{self.extension}.tmp")
                     variant_temporaries[variant] = temporary
                     variant_writers[variant] = self.open_writer(temporary)
-                variant_writers[variant].write([normalized])
+                    variant_rows[variant] = []
+                result_rows.append(normalized)
+                variant_rows[variant].append(normalized)
+                if result_writer is not None and len(result_rows) >= _FINAL_WRITE_BATCH_ROWS:
+                    flush_result_rows()
+                if len(variant_rows[variant]) >= _FINAL_WRITE_BATCH_ROWS:
+                    flush_variant_rows(variant)
                 count += 1
         finally:
-            result_writer.close()
+            flush_result_rows()
+            for variant in variant_writers:
+                flush_variant_rows(variant)
+            if result_writer is not None:
+                result_writer.close()
             for writer in variant_writers.values():
                 writer.close()
         if count:
-            result_temporary.replace(self.result_path())
+            if publish_combined:
+                result_temporary.replace(self.result_path())
             for variant, temporary in variant_temporaries.items():
                 temporary.replace(self.variant_path(variant))
-        elif result_temporary.exists():
+        elif publish_combined and result_temporary.exists():
             result_temporary.unlink()
         return count
 
@@ -130,6 +157,8 @@ class OutputStore(ABC):
         self,
         expected_hashes: Mapping[str, str] | None = None,
         retried_keys: set[tuple[str, str, int]] | None = None,
+        *,
+        publish_combined: bool = True,
     ) -> int:
         paths = self.part_paths()
         if not paths:
@@ -141,7 +170,12 @@ class OutputStore(ABC):
                 for row_index, row in enumerate(self.iter_file(path)):
                     yield file_index, row_index, row
 
-        return self._publish(indexed_rows(), expected_hashes=expected_hashes, latest_retries=latest)
+        return self._publish(
+            indexed_rows(),
+            expected_hashes=expected_hashes,
+            latest_retries=latest,
+            publish_combined=publish_combined,
+        )
 
     def write_snapshot(self, rows: Sequence[Mapping[str, Any]]) -> int:
         return self._publish((0, index, dict(row)) for index, row in enumerate(rows))
@@ -153,6 +187,24 @@ class OutputStore(ABC):
         if parts.exists():
             shutil.rmtree(parts)
         for path in [self.result_path(), *(self.variant_path(identifier) for identifier in variant_ids)]:
+            if path.exists():
+                path.unlink()
+
+    def discard_variants(self, variant_ids: Iterable[str]) -> None:
+        """Discard only the selected variant parts and projections.
+
+        This is used by concurrently isolated strategy jobs when a changed
+        configuration invalidates one variant's resume index. Other strategy
+        parts in the same matrix directory remain recoverable.
+        """
+
+        import shutil
+
+        for variant_id in variant_ids:
+            parts = self.part_directory(str(variant_id))
+            if parts.exists():
+                shutil.rmtree(parts)
+            path = self.variant_path(str(variant_id))
             if path.exists():
                 path.unlink()
 

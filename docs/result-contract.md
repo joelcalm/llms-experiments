@@ -1,6 +1,16 @@
 # Result Contract 2.0
 
-Every run writes `manifest.json`, `effective_config.yaml`, append-only parts, one combined result file, and one projection per variant. The extension is selected by `output.format`: `parquet`, `csv`, or `jsonl`. Matrix runs also write a matrix manifest and one independent dataset directory per lane.
+Every ordinary run writes `manifest.json`, `effective_config.yaml`, append-only parts, one combined result file, and one projection per variant. The extension is selected by `output.format`: `parquet`, `csv`, or `jsonl`. Matrix runs also write a matrix manifest and one independent dataset directory per lane.
+
+A matrix may be safely split across concurrent strategy jobs with
+`output.variant_isolated: true` and exactly one configured variant per job.
+Such a job writes a strategy-specific manifest, effective configuration,
+resume database, event log, and variant projection, while deliberately not
+publishing `results.<extension>`. This prevents two jobs from clearing the
+same resume index or replacing a combined file while the other strategy is
+still writing. The canonical `manifest.json` is installed as a compatibility
+link when absent. The final compact exporter consumes the per-variant
+projections directly; a normal single-process run remains unchanged.
 
 ## Manifest
 
@@ -39,6 +49,14 @@ For `single_label_verbalized_confidence`, `parsed_output` contains the validated
 
 The weighted value uses model probabilities directly and does not renormalise truncated top-logprob output. Runs request the maximum 20 alternatives, while constrained decoding restricts each confidence position to a digit.
 
-Every attempted result records status, attempts, timings, token count, batch size, optional input text, and resource snapshot. Failed validation and backend rows remain explicit. Backend failures are retryable on resume; deterministic validation failures remain durable.
+Every attempted result records status, attempts, timings, token count, batch
+size, optional input text, and resource snapshot. Failed validation and
+backend rows remain explicit. Backend failures are retryable on resume;
+deterministic validation failures remain durable by default. A configuration
+may set `validation.retry.retry_failed_validation_on_resume: true` when a
+corrected prompt, schema, or token budget is being applied. Such a resume
+leaves failed-validation identities retryable and the latest valid attempt
+replaces the earlier row in the final projection. This is an explicit
+campaign choice, not a change to the default contract semantics.
 
 The contract contains inference results only. It defines no accuracy, F1, thresholded multi-label prediction, axiom, or aggregate evaluation field.
