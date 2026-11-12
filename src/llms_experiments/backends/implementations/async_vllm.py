@@ -40,7 +40,9 @@ class AsyncVLLMBackend(AsyncStreamingBackend):
         except RuntimeError:
             pass
         os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
-        self.vllm_environment = configure_vllm_environment(model)
+        self._model = dict(model)
+        self._resource_guard = resource_guard
+        self.vllm_environment = configure_vllm_environment(self._model)
         try:
             from vllm import SamplingParams
             from vllm.engine.arg_utils import AsyncEngineArgs
@@ -53,24 +55,54 @@ class AsyncVLLMBackend(AsyncStreamingBackend):
             ) from exc
         configure_torch_cpu_threads(resource_guard)
         self.params = SamplingParams
-        engine_kwargs = vllm_engine_kwargs(model)
+        self._async_engine_args = AsyncEngineArgs
+        self._async_llm = AsyncLLM
+        self._load_chat_template = load_chat_template
+        self._engine_kwargs = vllm_engine_kwargs(self._model)
         # Chat templates belong to the per-request renderer.  ``LLM`` accepts
         # the convenience constructor argument, while ``AsyncEngineArgs`` does
         # not, so pass the same template explicitly in ``_render_chat``.
-        engine_kwargs.pop("chat_template", None)
+        self._engine_kwargs.pop("chat_template", None)
         # ``calculate_kv_scales`` was accepted by the synchronous constructor
         # but is not an ``AsyncEngineArgs`` field in vLLM 0.28.  The current
         # campaign uses fixed FP8 cache scales, so omitting it preserves the
         # requested default and keeps the dedicated async runtime compatible.
-        engine_kwargs.pop("calculate_kv_scales", None)
-        self.engine = AsyncLLM.from_engine_args(AsyncEngineArgs(**engine_kwargs))
-        self._tokenizer = self.engine.get_tokenizer()
-        template_kwargs = model.get("chat_template_kwargs", {})
+        self._engine_kwargs.pop("calculate_kv_scales", None)
+        self._create_engine()
+        template_kwargs = self._model.get("chat_template_kwargs", {})
         if not isinstance(template_kwargs, dict):
             raise ValueError("model.chat_template_kwargs must be a mapping")
         self.chat_template_kwargs = dict(template_kwargs)
-        self.chat_template = load_chat_template(model.get("chat_template"))
+        self.chat_template = self._load_chat_template(self._model.get("chat_template"))
         self._closed = False
+
+    def _create_engine(self) -> None:
+        """Create an AsyncLLM from the already validated engine options."""
+
+        self.engine = self._async_llm.from_engine_args(self._async_engine_args(**self._engine_kwargs))
+        self._tokenizer = self.engine.get_tokenizer()
+
+    def restart_engine(self) -> None:
+        """Recreate the engine after a capacity probe kills EngineCore.
+
+        vLLM may terminate its EngineCore process after a CUDA OOM.  The
+        startup batch search calls this method between rejected probes so it
+        can continue the dichotomy search without losing durable experiment
+        output; no result rows have been published during tuning.
+        """
+
+        if self._closed:
+            raise RuntimeError("cannot restart a closed async vLLM backend")
+        with contextlib.suppress(Exception):
+            self.engine.shutdown()
+        import gc
+
+        gc.collect()
+        with contextlib.suppress(Exception):
+            import torch
+
+            torch.cuda.empty_cache()
+        self._create_engine()
 
     def _sampling_params(self, request: GenerationRequest) -> Any:
         """Build deterministic final-only sampling parameters for one variant."""

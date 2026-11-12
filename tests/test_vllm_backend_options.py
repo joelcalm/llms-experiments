@@ -44,6 +44,7 @@ def test_vllm_backend_passes_scheduler_controls_to_vllm() -> None:
         "calculate_kv_scales",
         "mamba_cache_dtype",
         "mamba_ssm_cache_dtype",
+        "gdn_prefill_backend",
         "performance_mode",
         "optimization_level",
     ):
@@ -56,7 +57,7 @@ def test_async_vllm_backend_uses_final_only_bounded_dispatch() -> None:
         Path(__file__).parents[1] / "src" / "llms_experiments" / "backends" / "implementations" / "async_vllm.py"
     ).read_text(encoding="utf-8")
 
-    assert "AsyncLLM.from_engine_args" in source
+    assert "_async_llm.from_engine_args" in source
     assert "RequestOutputKind.FINAL_ONLY" in source
     assert "max_in_flight" in source
     assert 'engine_kwargs.pop("calculate_kv_scales", None)' in source

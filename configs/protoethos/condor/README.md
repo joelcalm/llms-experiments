@@ -41,6 +41,27 @@ For a matrix split across many queue rows, write a per-model `*.sub` that sets
 `executable` at a worker script that calls the CLI with `output.variant_isolated:
 true`. Keep those generated descriptors out of the repository.
 
+## H100 preflight checklist
+
+The ProtoEthos H100 worker must receive an expanded absolute `DATA_ROOT`, not
+the literal string `${DATA_ROOT}`. Before submitting a generated descriptor,
+inspect its rendered environment with `condor_submit -dry-run` or the first
+`condor_history -long` record and verify that it contains, at minimum:
+
+```text
+DATA_ROOT=/lustre/ific.uv.es/ml/iiia021/llms_experiments_full_matrix_20260716/mova_data
+CONFIG_PATH=/lustre/ific.uv.es/ml/iiia021/llms_experiments_full_matrix_20260716/code_quantized_20260826/configs/protoethos/protoethos_full_matrix.yaml
+```
+
+The worker performs the same checks itself and runs the CLI configuration
+validator before downloading the model. A missing, unresolved, relative, or
+non-existent data root is recorded as `configuration_failed` and releases the
+job without starting vLLM. The current H100 descriptor uses a 24-hour
+`PeriodicRemove` boundary; streamed Parquet parts, checkpoints, manifests, and
+resume databases must therefore remain on durable storage so a recycle can
+resume without duplicating work. Do not extend that boundary without an
+explicit campaign decision.
+
 ## Model-specific JSON compatibility
 
 The quantised worker passes optional model controls through to the common

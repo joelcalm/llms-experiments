@@ -16,6 +16,9 @@ config_root: ../..
 
 This keeps a self-contained configuration family under a subdirectory while
 sharing repository-level prompt assets and the usual `results/` location.
+Environment-backed paths are expanded before validation. If a variable remains
+unresolved, validation raises an explicit error instead of allowing a worker to
+download a model and fail later on a literal path such as `${DATA_ROOT}/mftc.json`.
 
 ## Inputs and backends
 
@@ -148,8 +151,8 @@ For a backend known to remain usable after a failed capacity probe,
 `batch.refine_after_failure: true` performs integer bisection between the last
 accepted and first rejected probes. This can select a non-power-of-two batch
 near the available-memory boundary; leave it false for backends that require
-restart after an OOM. The ProtoEthos FP8-KV-cache smoke/recovery jobs enable
-it only after the corresponding model has passed the smoke gate.
+restart after an OOM. The current ProtoEthos INT4 H100 descriptor enables it
+after the compatible quantised checkpoints have passed their smoke gate.
 `batch.queue_depth` may make each backend call larger than `model.max_num_seqs`
 so vLLM can refill finished sequence slots while slower rows are still
 decoding. Use it only after a measured GPU smoke test, because the resulting
@@ -193,8 +196,22 @@ One persistent event loop is retained for every strategy and dataset sharing an
 the same durable boundary with checkpoint state `failed`, while orderly
 interruptions use `interrupted`.
 
+When `batch.dynamic_limit: true` is used with async vLLM, the runner performs
+an explicit startup capacity search before publishing ordinary lane results.
+It doubles the admission limit from `batch.start_size` up to the configured
+`model.max_num_seqs` envelope. If `batch.refine_after_failure: true`, it
+restarts an async vLLM engine after a capacity/OOM failure and bisects the
+interval between the last accepted and first rejected probes. The selected
+concurrency is then used as the effective `streaming.max_in_flight` for the
+lane and all probe outcomes are retained in `batch_candidate` events and the
+variant manifest. The model sequence envelope is therefore a recovery bound,
+not the claimed optimal batch size; the measured value is the reproducible
+runtime setting.
+
 For hybrid recurrent models, `model.mamba_cache_dtype` and
 `model.mamba_ssm_cache_dtype` are passed through to vLLM when supported. Keep
+`model.gdn_prefill_backend` can select the Qwen GatedDeltaNet prefill backend
+(`flashinfer`, `triton`, or `cutedsl`) on vLLM versions that expose it. Keep
 those settings, `model.kv_cache_dtype`, `model.performance_mode`,
 `model.optimization_level`, `model.language_model_only`, and any
 `VLLM_USE_FASTOKENS` environment setting in the effective configuration and

@@ -28,6 +28,23 @@ def test_quantized_worker_exposes_json_compatibility_controls() -> None:
     assert 'append_override "${CALCULATE_KV_SCALES:-}" model.calculate_kv_scales' in source
     assert '--set "batch.refine_after_failure=$BATCH_REFINE_AFTER_FAILURE"' in source
     assert "conservative_retry_batch" in source
+    assert "Restrict a resumed matrix job to lanes" in source
+    assert 'checkpoint.get("state") == "completed"' in source
+    assert "single_label_json.parquet" in source
+    assert 'DATASETS="$missing_datasets"' in source
+    assert 'RUNTIME_LOG_DIR="${RUNTIME_LOG_DIR:-${RESULTS_ROOT%/*}/logs}"' in source
+
+
+def test_quantized_worker_uses_job_local_runtime_caches() -> None:
+    """Disposable compiler caches must not consume the shared Lustre quota."""
+    source = (
+        Path(__file__).parents[1] / "configs" / "protoethos" / "condor" / "run_quantized_full_matrix_worker.sh"
+    ).read_text(encoding="utf-8")
+
+    assert 'runtime_cache_root="${JOB_CACHE_ROOT:-${SHARED_CACHE_ROOT:-$RUN_ROOT/shared_cache}}"' in source
+    assert 'export TORCHINDUCTOR_CACHE_DIR="$runtime_cache_root/torchinductor"' in source
+    assert 'export TRITON_CACHE_DIR="$runtime_cache_root/triton"' in source
+    assert 'export XDG_CACHE_HOME="$runtime_cache_root/xdg_cache"' in source
 
 
 def test_quantized_worker_exposes_async_engine_and_hybrid_cache_controls() -> None:

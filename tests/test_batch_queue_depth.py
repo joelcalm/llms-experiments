@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from llms_experiments.backends import Backend, BackendFailure
+from llms_experiments.backends import AsyncStreamingBackend, Backend, BackendFailure
 from llms_experiments.events import Events
-from llms_experiments.orchestration import run, tune
+from llms_experiments.orchestration import run, tune, tune_async
 from llms_experiments.processors import GenerationRequest, RawModelResponse, ResponseRequirements
 
 
@@ -58,6 +59,36 @@ class ThresholdBackend(RecordingBackend):
         if len(prompts) > self.capacity:
             raise BackendFailure("out of memory")
         return super().generate(prompts, request)
+
+
+class AsyncThresholdBackend(AsyncStreamingBackend):
+    """Simulate an async engine whose safe concurrency is non-power-of-two."""
+
+    def __init__(self, capacity: int) -> None:
+        self.capacity = capacity
+        self.restart_count = 0
+
+    def generate(
+        self,
+        prompts: Sequence[str],
+        request: GenerationRequest | Mapping[str, Any],
+    ) -> list[RawModelResponse]:
+        raise AssertionError("async tuning must use generate_stream")
+
+    async def generate_stream(
+        self,
+        prompts: Iterable[tuple[str, str]],
+        request: GenerationRequest | Mapping[str, Any],
+        *,
+        max_in_flight: int,
+    ) -> AsyncIterator[tuple[str, RawModelResponse]]:
+        if max_in_flight > self.capacity:
+            raise BackendFailure("out of memory")
+        for request_id, _ in prompts:
+            yield request_id, RawModelResponse("ok", 1)
+
+    def restart_engine(self) -> None:
+        self.restart_count += 1
 
 
 def _config(tmp_path: Path, batch: dict[str, Any]) -> dict[str, Any]:
@@ -199,3 +230,37 @@ def test_dynamic_limit_extends_probe_window_until_input_exhausted(tmp_path: Path
 
     assert [(event["old_rows"], event["new_rows"]) for event in extensions] == [(2, 4), (4, 8)]
     assert max(accepted) == 8
+
+
+def test_async_dynamic_limit_bisects_after_restart(tmp_path: Path) -> None:
+    backend = AsyncThresholdBackend(capacity=200)
+    events = Events(tmp_path / "run.log", tmp_path / "events.jsonl")
+    request = GenerationRequest("raw", ResponseRequirements(max_tokens=1))
+    loop = asyncio.new_event_loop()
+    try:
+        selected, attempts = tune_async(
+            backend,
+            request,
+            ["prompt"] * 512,
+            {
+                "mode": "auto",
+                "dynamic_limit": True,
+                "refine_after_failure": True,
+                "start_size": 64,
+            },
+            events,
+            loop,
+            512,
+        )
+    finally:
+        loop.close()
+        events.close()
+
+    accepted = [item["candidate"] for item in attempts if item["accepted"]]
+    assert max(accepted) == 200
+    assert selected in accepted
+    assert attempts[0]["candidate"] == 64
+    assert attempts[2]["candidate"] == 256
+    assert attempts[2]["accepted"] is False
+    assert any(item["candidate"] == 200 and item["accepted"] for item in attempts)
+    assert backend.restart_count >= 1

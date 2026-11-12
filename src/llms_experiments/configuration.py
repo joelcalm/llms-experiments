@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import warnings
 from copy import deepcopy
 from pathlib import Path
@@ -15,9 +16,21 @@ from .backends.factory import BACKEND_TYPES
 from .inputs.factory import INPUT_READER_TYPES
 from .processors import ConfigurationDefaultWarning, create_processor
 
+_UNRESOLVED_ENVIRONMENT = re.compile(r"\$\{[^}]+\}|\$[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _expand_environment(value: str | Path) -> str:
+    """Expand a configured path and reject variables that remain unresolved."""
+    raw = str(value)
+    expanded = os.path.expandvars(raw)
+    unresolved = _UNRESOLVED_ENVIRONMENT.search(expanded)
+    if unresolved:
+        raise ValueError(f"Unresolved environment variable in configured path: {unresolved.group(0)}")
+    return expanded
+
 
 def resolve(config: dict[str, Any], value: str | Path) -> Path:
-    expanded = os.path.expandvars(str(value))
+    expanded = _expand_environment(value)
     path = Path(expanded)
     return path if path.is_absolute() else Path(config["_root"]) / path
 
@@ -47,7 +60,7 @@ def load_config(path: str | Path, overrides: list[str] | None = None, *, check_f
     if configured_root is not None and not isinstance(configured_root, str):
         raise ValueError("config_root must be a relative path string")
     if configured_root is not None:
-        root_path = Path(os.path.expandvars(configured_root))
+        root_path = Path(_expand_environment(configured_root))
         if root_path.is_absolute():
             raise ValueError("config_root must be a relative path string")
         root = (path.parent / root_path).resolve()

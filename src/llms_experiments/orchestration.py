@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -39,6 +39,7 @@ from .runtime import apply_resource_guard, gpu, sync_cuda
 
 BackoffCallback = Callable[[BackendFailure, int, int], None]
 AppendCallback = Callable[[dict[str, Any]], None]
+BatchGenerator = Callable[[Sequence[str], GenerationRequest], list[RawModelResponse]]
 
 
 class RunInterrupted(RuntimeError):
@@ -201,20 +202,161 @@ def tune(
     return selected, attempts
 
 
+def tune_async(
+    backend: AsyncStreamingBackend,
+    request: GenerationRequest,
+    prompts: Sequence[str],
+    batch: Mapping[str, Any],
+    events: Events,
+    async_loop: asyncio.AbstractEventLoop,
+    max_size: int,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Select async engine concurrency with doubling and optional bisection.
+
+    The async backend continuously admits individual requests, so its tuning
+    parameter is the admission limit rather than an application batch.  A
+    failed vLLM capacity probe can kill the engine process; production async
+    backends may expose ``restart_engine`` so the search can continue in a
+    fresh engine before testing the bisection midpoint.
+
+    Args:
+        backend: Async backend used for the short startup probes.
+        request: Backend-neutral generation request for the current variant.
+        prompts: Rendered warm-up prompts, with enough rows for ``max_size``.
+        batch: Batch configuration containing ``start_size`` and search flags.
+        events: Run event sink receiving every accepted/rejected probe.
+        async_loop: Persistent event loop owned by the run.
+        max_size: Explicit vLLM scheduler envelope; the search cannot exceed it.
+
+    Returns:
+        The largest accepted concurrency and its structured probe records.
+
+    Raises:
+        RuntimeError: If no positive concurrency probe succeeds.
+        ValueError: If the search bounds or loop are invalid.
+    """
+
+    if async_loop.is_closed():
+        raise ValueError("async batch tuning requires an open event loop")
+    limit = min(len(prompts), int(max_size))
+    start = int(batch.get("start_size", 1))
+    if limit < 1 or start < 1:
+        raise ValueError("async batch tuning requires positive prompts and bounds")
+    start = min(start, limit)
+    attempts: list[dict[str, Any]] = []
+    accepted: list[tuple[float, int]] = []
+    attempted: set[int] = set()
+    safe_candidate: int | None = None
+    failed_candidate: int | None = None
+    can_restart = callable(getattr(backend, "restart_engine", None))
+
+    candidates: list[int] = []
+    candidate = start
+    while candidate < limit:
+        candidates.append(candidate)
+        candidate *= 2
+    if not candidates or candidates[-1] != limit:
+        candidates.append(limit)
+
+    async def probe(size: int) -> dict[str, Any]:
+        """Run one bounded async probe and return its measured outcome."""
+
+        started = time.perf_counter()
+        completed = 0
+        token_count = 0
+        items = ((str(index), prompt) for index, prompt in enumerate(prompts[:size]))
+        async for _, response in backend.generate_stream(
+            items,
+            request,
+            max_in_flight=size,
+        ):
+            completed += 1
+            token_count += response.token_count
+        elapsed = max(time.perf_counter() - started, 1e-9)
+        return {
+            "candidate": size,
+            "accepted": True,
+            "rows_per_second": completed / elapsed,
+            "tokens_per_second": token_count / elapsed,
+            "latency_seconds": elapsed,
+            "gpu": gpu(),
+        }
+
+    def restart_after_failure() -> None:
+        """Restart only backends that explicitly support post-OOM recovery."""
+
+        restart = getattr(backend, "restart_engine", None)
+        if not callable(restart):
+            return
+        restart()
+
+    def run_probe(size: int) -> dict[str, Any]:
+        """Run and publish one async probe exactly once."""
+
+        if size in attempted:
+            raise ValueError(f"Duplicate async batch probe: {size}")
+        attempted.add(size)
+        try:
+            record = async_loop.run_until_complete(probe(size))
+            accepted.append((float(record["rows_per_second"]), size))
+        except BackendFailure as exc:
+            record = {"candidate": size, "accepted": False, "error": str(exc), "gpu": gpu()}
+            events.emit("batch_candidate_rejected", variant=request.variant_id, **record)
+        attempts.append(record)
+        events.emit("batch_candidate", variant=request.variant_id, **record)
+        return record
+
+    for size in candidates:
+        record = run_probe(size)
+        if record["accepted"]:
+            safe_candidate = size
+            continue
+        failed_candidate = size
+        restart_after_failure()
+        break
+
+    if (
+        bool(batch.get("refine_after_failure", False))
+        and can_restart
+        and failed_candidate is not None
+        and safe_candidate is not None
+    ):
+        while failed_candidate - safe_candidate > 1:
+            midpoint = safe_candidate + (failed_candidate - safe_candidate) // 2
+            record = run_probe(midpoint)
+            if record["accepted"]:
+                safe_candidate = midpoint
+            else:
+                failed_candidate = midpoint
+                restart_after_failure()
+
+    if not accepted:
+        raise RuntimeError(f"No safe async batch size for {request.variant_id}")
+    selected = max(accepted)[1]
+    events.emit("batch_selected", variant=request.variant_id, batch_size=selected, candidates=attempts)
+    return selected, attempts
+
+
 def generate_with_backoff(
     backend: Backend,
     request: GenerationRequest,
     prompts: Sequence[str],
     batch_config: Mapping[str, Any],
     on_backoff: BackoffCallback | None = None,
+    generator: BatchGenerator | None = None,
 ) -> tuple[list[RawModelResponse], int]:
-    """Generate a batch, halving it on batch-level backend failures."""
+    """Generate a batch, halving it on batch-level backend failures.
+
+    ``generator`` allows an orchestration caller to keep asynchronous backends
+    on their owning event loop during synchronous retry handling.
+    """
 
     active = list(prompts)
     minimum = int(batch_config.get("min_size", 1))
+    batch_generator = generator or backend.generate
     while True:
         try:
-            responses = backend.generate(active, request)
+            responses = batch_generator(active, request)
             if len(responses) != len(active):
                 raise BackendFailure(f"Backend returned {len(responses)} responses for {len(active)} prompts")
             return responses, len(active)
@@ -225,6 +367,35 @@ def generate_with_backoff(
             if on_backoff is not None:
                 on_backoff(exc, len(active), new_size)
             active = active[:new_size]
+
+
+def _async_batch_generator(
+    backend: AsyncStreamingBackend,
+    async_loop: asyncio.AbstractEventLoop,
+) -> BatchGenerator:
+    """Adapt one async stream to a synchronous retry batch on its owning loop."""
+
+    async def collect(prompts: Sequence[str], request: GenerationRequest) -> list[RawModelResponse]:
+        responses: list[RawModelResponse | None] = [None] * len(prompts)
+        items = ((str(index), prompt) for index, prompt in enumerate(prompts))
+        async for request_id, response in backend.generate_stream(
+            items,
+            request,
+            max_in_flight=max(1, min(len(prompts), 64)),
+        ):
+            responses[int(request_id)] = response
+        if any(response is None for response in responses):
+            raise BackendFailure("Async deferred retry returned incomplete responses")
+        return [cast(RawModelResponse, response) for response in responses]
+
+    def generate(prompts: Sequence[str], request: GenerationRequest) -> list[RawModelResponse]:
+        """Run the retry collection without creating a second event loop."""
+
+        if async_loop.is_closed():
+            raise BackendFailure("Async deferred retry loop is closed")
+        return async_loop.run_until_complete(collect(prompts, request))
+
+    return generate
 
 
 def _counted(rows: Iterable[dict[str, Any]], counter: list[int]) -> Iterator[dict[str, Any]]:
@@ -414,6 +585,8 @@ def run(
                 int(batch_config.get("warmup_rows", 64)),
                 *[int(item) for item in declared],
             )
+            if async_dispatch_requested and bool(batch_config.get("dynamic_limit", False)):
+                prefetch_count = max(prefetch_count, int(config["model"].get("max_num_seqs", 1)))
             prefetched = [dict(row) for row in itertools.islice(source_iter, prefetch_count)]
             if not prefetched:
                 continue
@@ -442,10 +615,27 @@ def run(
                 max_in_flight = int(config.get("streaming", {}).get("max_in_flight", 0))
                 if max_in_flight < 1:
                     raise ValueError("streaming.max_in_flight must be positive for async_vllm")
-                # The engine, not this runner, controls resident sequences.
-                # This value remains only result metadata and retry sizing.
+                # The engine owns the actual scheduler, but dynamic tuning
+                # probes its safe admission concurrency before the lane starts.
+                # The model max_num_seqs is the vLLM scheduler envelope; the
+                # selected value becomes the stream's producer limit below.
                 size = int(config["model"].get("max_num_seqs", 1))
                 tuning_attempts: list[dict[str, Any]] = []
+                if dynamic_limit:
+                    tune_prompts = [rendered_prompt(config, variant, row, schema) for row in prefetched]
+                    size, tuning_attempts = tune_async(
+                        backend,
+                        request,
+                        tune_prompts,
+                        batch_config,
+                        events,
+                        cast(asyncio.AbstractEventLoop, async_loop),
+                        size,
+                    )
+                    # Do not leave the producer queue larger than the
+                    # measured safe concurrency: that only creates pending
+                    # Python tasks without increasing GPU occupancy.
+                    max_in_flight = min(max_in_flight, size)
             else:
                 tuning_attempts = []
                 rendered_cache: dict[int, str] = {}
@@ -827,6 +1017,7 @@ def run(
                     run_id=run_id,
                     config_hash=config_hash,
                     group_id=group_id,
+                    async_loop=async_loop,
                 )
 
                 if writer.flush():
@@ -951,8 +1142,14 @@ def run_deferred_retries(
     run_id: str,
     config_hash: str,
     group_id: str,
+    async_loop: asyncio.AbstractEventLoop | None = None,
 ) -> int:
-    """Retry invalid structured responses in smaller, higher-budget batches."""
+    """Retry invalid structured responses in smaller, higher-budget batches.
+
+    Async streaming backends must use the same event loop as the main stream;
+    creating a second loop around an existing ``AsyncLLM`` can leave retries
+    waiting forever on the engine's original loop.
+    """
 
     if not queued or correction is None:
         return 0
@@ -965,6 +1162,12 @@ def run_deferred_retries(
     retry_batch = max(int(batch_config.get("min_size", 1)), size // retry_divisor)
     written = 0
 
+    retry_generator: BatchGenerator | None = None
+    if isinstance(backend, AsyncStreamingBackend):
+        if async_loop is None or async_loop.is_closed():
+            raise BackendFailure("Async deferred retries require the backend's active event loop")
+        retry_generator = _async_batch_generator(backend, async_loop)
+
     for retry_round in range(1, max_attempts + 1):
         if not queued:
             break
@@ -973,6 +1176,16 @@ def run_deferred_retries(
             request.requirements.max_tokens * token_multiplier**retry_round,
         )
         retry_request = _retry_request(request, retry_max_tokens)
+        # Some quantised checkpoints can hang inside guided decoding while
+        # correcting an otherwise small schema violation (for example a
+        # duplicate label).  The correction prompt plus the normal processor
+        # validation still enforce the result contract, so allow a campaign
+        # to disable guided decoding only for this retry path.
+        if not bool(retry_settings.get("structured_output", True)):
+            retry_request = replace(
+                retry_request,
+                requirements=replace(retry_request.requirements, structured_schema=None),
+            )
         events.emit(
             "deferred_retry_started",
             variant=variant_id,
@@ -1029,6 +1242,7 @@ def run_deferred_retries(
                 retry_prompts,
                 batch_config,
                 on_backoff,
+                generator=retry_generator,
             )
             retry_chunk = retry_chunk[:used]
             elapsed = max(time.perf_counter() - started, 1e-9)

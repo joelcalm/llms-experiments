@@ -7,11 +7,14 @@ results, credentials, or site-specific absolute paths.
 | Asset | Purpose |
 | --- | --- |
 | `ministral_all_datasets.yaml` | Full multi-dataset ProtoEthos matrix |
-| `mova2025.yaml` | Five-theory MoVa smoke matrix |
 | `protoethos_full_matrix.yaml` | Canonical full ProtoEthos comparison matrix |
-| `mova_full_matrix.yaml` | Legacy compatibility copy of the ProtoEthos matrix |
 | `condor/` | HTCondor launch wrapper and paper job descriptions |
 | `slurm/` | Slurm launch wrapper for the same full matrix |
+
+The current campaign does not use MoVa-named configurations. The historical
+`mova2025.yaml` and `mova_full_matrix.yaml` files remain only for reproducing
+older runs; new work must use `protoethos_full_matrix.yaml` and the
+`protoethos` run identifier.
 
 Each YAML declares `config_root: ../..`, so prompt assets and relative output
 paths continue to resolve from the repository root after this isolation.

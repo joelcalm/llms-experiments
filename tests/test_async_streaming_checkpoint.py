@@ -12,9 +12,9 @@ from typing import Any
 import pytest
 
 from llms_experiments.backends import AsyncStreamingBackend
-from llms_experiments.orchestration import RunInterrupted, run
+from llms_experiments.orchestration import RunInterrupted, _async_batch_generator, run
 from llms_experiments.outputs import create_output_store
-from llms_experiments.processors import GenerationRequest, RawModelResponse
+from llms_experiments.processors import GenerationRequest, RawModelResponse, ResponseRequirements
 
 
 class RecordingAsyncBackend(AsyncStreamingBackend):
@@ -125,6 +125,22 @@ def test_async_dispatch_is_bounded_and_publishes_checkpointed_parts(tmp_path: Pa
     finished = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
     assert finished["state"] == "completed"
     assert finished["durable_result_rows"] == 5
+
+
+def test_async_deferred_batch_uses_the_existing_event_loop() -> None:
+    """Async retry collection must not call the backend through a new loop."""
+
+    backend = RecordingAsyncBackend()
+    loop = asyncio.new_event_loop()
+    try:
+        generate = _async_batch_generator(backend, loop)
+        request = GenerationRequest("retry", ResponseRequirements(max_tokens=1))
+        responses = generate(["one", "two"], request)
+    finally:
+        loop.close()
+
+    assert [response.text for response in responses] == ['{"label":"alpha"}'] * 2
+    assert backend.loop_ids == {id(loop)}
 
 
 def test_async_dispatch_reuses_one_event_loop_for_multiple_variants(tmp_path: Path) -> None:

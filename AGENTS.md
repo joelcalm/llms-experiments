@@ -151,6 +151,22 @@ than reading the whole tree serially, then reconcile findings. Always pair an au
 with `uv run python scripts/check.py` and a `git status`/`du -sh` bloat scan before
 declaring the tree clean.
 
+### Current Artemisa operations
+
+Before inspecting or changing the ProtoEthos INT4 campaign, read the concise
+live recovery record in
+[`internal_documentation/INT4_RECOVERY_STATUS_20260831.md`](internal_documentation/INT4_RECOVERY_STATUS_20260831.md).
+It defines the authoritative completion check, durable result roots, hardware
+split, duplicate policy, and current resumable lanes.
+
+For future campaigns: inspect Condor and per-lane checkpoints first; reuse
+matching completed or partial trees; never queue an identical model revision,
+dataset, and JSON strategy twice; keep dense large models on H100 and MoE or
+small models on A100; keep durable results outside the known quota-limited
+project root; use `/tmp` only for rebuildable compiler/runtime cache and
+transient logs; and record the post-action queue snapshot before the next
+change. Parts alone are progress, not completion.
+
 ## Change Discipline
 
 * Keep changes scoped to the requested task.

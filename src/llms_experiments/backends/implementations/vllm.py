@@ -54,6 +54,7 @@ def vllm_engine_kwargs(model: Mapping[str, Any]) -> dict[str, Any]:
         "calculate_kv_scales",
         "mamba_cache_dtype",
         "mamba_ssm_cache_dtype",
+        "gdn_prefill_backend",
         "generation_config",
         "reasoning_parser",
         "performance_mode",

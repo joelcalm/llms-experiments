@@ -15,6 +15,8 @@ These pages describe the installable `llms-experiments` package at version
   scoring, and verbalized confidence.
 - [Result contract](result-contract.md): the row schema, status semantics,
   provenance, and output files.
+- [ProtoEthos 18-model results](protoethos_18_model_results.md): result paths,
+  JSON strategy prompts, checkpoint precision, and current file-location audit.
 - [Configuration JSON Schema](config.schema.json): generated editor/tooling
   schema. Regenerate it with `uv run python scripts/generate_config_schema.py`
   from an installed checkout.
@@ -24,6 +26,9 @@ CPU-only fake-backend matrix is the fastest installation check; the llama.cpp
 example requires the optional `llama-cpp` dependency and a local GGUF model.
 
 Artemisa execution reports are kept separately under
-[`../internal_documentation/`](../internal_documentation/). Dated status files
-are provenance snapshots; consult `internal_documentation/00-live-status.md`
-and re-query the scheduler before treating a job or result as current.
+[`../internal_documentation/`](../internal_documentation/). For the current
+ProtoEthos INT4 JSON-only campaign, read
+[`00-live-status.md`](../internal_documentation/00-live-status.md) and
+[`INT4_RECOVERY_STATUS_20260831.md`](../internal_documentation/INT4_RECOVERY_STATUS_20260831.md);
+dated status files are provenance snapshots. Re-query the scheduler before
+treating a job or result as current.
